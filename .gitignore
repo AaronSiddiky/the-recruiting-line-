@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# The template holds placeholders only and is what the README tells you to copy.
+!.env.example
