@@ -1,0 +1,82 @@
+/* Internal /leads tool. Everything is scoped under .leads-page so it
+   cannot leak into the marketing site. */
+.leads-page {
+  --paper: #EFF0EC;
+  --card: #F7F8F5;
+  --ink: #171A1C;
+  --steel: #8A9290;
+  --line: #C6CBC7;
+  --orange: #F04A00;
+  --orange-dark: #C93D00;
+  --blue: #2E5E6E;
+  --mono: var(--font-plex-mono), monospace;
+  --disp: var(--font-barlow-condensed), sans-serif;
+  --body: var(--font-barlow), sans-serif;
+  background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+.leads-page * { margin: 0; padding: 0; box-sizing: border-box; }
+.leads-page .hazard { height: 10px; background: repeating-linear-gradient(-45deg, var(--ink) 0 14px, var(--orange) 14px 28px); }
+.leads-page .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.leads-page a { color: inherit; }
+.leads-page .btn { display: inline-block; font-family: var(--disp); font-weight: 700; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; text-decoration: none; padding: 16px 30px; border: 2px solid var(--ink); transition: transform .12s ease, box-shadow .12s ease; }
+.leads-page .btn:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+.leads-page .btn-primary { background: var(--orange); color: #fff; border-color: var(--ink); box-shadow: 5px 5px 0 var(--ink); }
+.leads-page .btn-primary:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--ink); }
+.leads-page .eyebrow { font-family: var(--mono); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--blue); font-weight: 600; }
+
+.leads-page nav { border-bottom: 2px solid var(--ink); background: var(--paper); position: sticky; top: 0; z-index: 50; }
+.leads-page .nav-in { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; max-width: 1080px; margin: 0 auto; }
+.leads-page .logo { font-family: var(--disp); font-weight: 800; font-size: 24px; letter-spacing: .03em; text-transform: uppercase; text-decoration: none; }
+.leads-page .logo span { color: var(--orange); }
+
+@media (max-width: 560px) {
+  .leads-page .btn { width: 100%; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leads-page .btn-primary:hover { transform: none; }
+}
+
+.leads-page main.wrap { flex: 1; padding: 40px 24px 60px; width: 100%; }
+.leads-page .leads-tag { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--steel); }
+
+.leads-page .dropzone { margin: 60px auto 0; max-width: 640px; text-align: center; border: 2px dashed var(--ink); background: var(--card); padding: 70px 40px; transition: background .12s ease; }
+.leads-page .dropzone.over { background: #fff; border-style: solid; box-shadow: 8px 8px 0 var(--ink); }
+.leads-page .dz-title { font-family: var(--disp); font-weight: 800; font-size: clamp(32px, 4.4vw, 48px); line-height: 1; text-transform: uppercase; margin: 12px 0 14px; }
+.leads-page .dz-sub { color: #3A4042; max-width: 44ch; margin: 0 auto 28px; }
+.leads-page .dz-error { margin-top: 18px; font-family: var(--mono); font-size: 13px; color: var(--orange-dark); }
+
+.leads-page .list-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; flex-wrap: wrap; margin-bottom: 22px; }
+.leads-page .list-title { font-family: var(--disp); font-weight: 800; font-size: clamp(28px, 3.6vw, 44px); line-height: 1; text-transform: uppercase; margin-top: 6px; }
+.leads-page .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.leads-page .btn-small { font-family: var(--mono); font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 9px 14px; border: 2px solid var(--ink); background: var(--orange); color: #fff; cursor: pointer; }
+.leads-page .btn-small:hover { background: var(--orange-dark); }
+.leads-page .btn-small.ghost { background: transparent; color: var(--ink); }
+.leads-page .btn-small.ghost:hover { background: var(--ink); color: var(--paper); }
+
+.leads-page .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; background: var(--ink); border: 2px solid var(--ink); margin-bottom: 22px; }
+.leads-page .tile { background: var(--card); padding: 14px 16px 16px; }
+.leads-page .tile-num { font-family: var(--disp); font-weight: 800; font-size: 32px; line-height: 1; color: var(--orange); font-variant-numeric: tabular-nums; }
+.leads-page .tile-lab { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--steel); margin-top: 5px; }
+
+.leads-page .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.leads-page .filters .search { flex: 1; min-width: 220px; }
+.leads-page .filters input, .leads-page .filters select { font-family: var(--mono); font-size: 14px; padding: 10px 12px; border: 2px solid var(--ink); background: #fff; color: var(--ink); border-radius: 0; }
+.leads-page .filters input:focus-visible, .leads-page .filters select:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+.leads-page .table-scroll { overflow-x: auto; border: 2px solid var(--ink); background: #fff; box-shadow: 8px 8px 0 var(--ink); }
+.leads-page table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.leads-page thead th { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; text-align: left; padding: 11px 14px; background: var(--ink); color: var(--paper); white-space: nowrap; cursor: pointer; user-select: none; position: sticky; top: 0; }
+.leads-page tbody td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.leads-page tbody tr:nth-child(even) { background: var(--card); }
+.leads-page tbody tr:hover { background: #FDEEE6; }
+.leads-page .c-company { font-weight: 600; }
+.leads-page .c-company a { text-decoration-color: var(--orange); }
+.leads-page .c-title { color: var(--steel); font-size: 13px; }
+.leads-page .c-mono { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.leads-page .c-industry { color: #3A4042; font-size: 13.5px; }
+.leads-page .empty { padding: 34px; text-align: center; font-family: var(--mono); font-size: 14px; color: var(--steel); }
+
+@media (max-width: 700px) {
+  .leads-page .stat-row { grid-template-columns: 1fr 1fr; }
+}

@@ -1,23 +1,11 @@
 import type { Metadata } from "next";
-import { Barlow, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
+import { Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
-const barlow = Barlow({
-  weight: ["400", "500", "600"],
+const instrumentSans = Instrument_Sans({
+  weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
-  variable: "--font-barlow",
-});
-
-const barlowCondensed = Barlow_Condensed({
-  weight: ["600", "700", "800"],
-  subsets: ["latin"],
-  variable: "--font-barlow-condensed",
-});
-
-const plexMono = IBM_Plex_Mono({
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
-  variable: "--font-plex-mono",
+  variable: "--font-instrument-sans",
 });
 
 export const metadata: Metadata = {
@@ -32,10 +20,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${barlow.variable} ${barlowCondensed.variable} ${plexMono.variable}`}
-    >
+    <html lang="en" className={instrumentSans.variable}>
       <body>{children}</body>
     </html>
   );
