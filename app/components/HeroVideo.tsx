@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "../page.module.css";
 
-const CLIPS = [
-  "https://videos.pexels.com/video-files/8986890/8986890-hd_1920_1080_30fps.mp4",
-  "https://videos.pexels.com/video-files/8986886/8986886-hd_1920_1080_30fps.mp4",
-  "https://videos.pexels.com/video-files/8986477/8986477-hd_1920_1080_30fps.mp4",
-];
+const CLIP_COUNT = 3;
 const FADE_MS = 900;
+const HERO_POSTER = "/hero/poster.webp";
+
+// Self-hosted, faststart H.264 (see public/hero). Phones and small laptops get 720p.
+function clipUrl(i: number) {
+  const hd = window.matchMedia("(min-width: 1024px) and (min-resolution: 1.5dppx), (min-width: 1440px)").matches;
+  return `/hero/clip${(i % CLIP_COUNT) + 1}-${hd ? 1080 : 720}.mp4`;
+}
 
 // React sets `muted` only as a property, which Chrome's autoplay policy
-// ignores, so force the attribute and retry play() until it sticks.
+// ignores, so force the attribute before calling play().
 function kick(el: HTMLVideoElement | null) {
   if (!el) return;
   el.muted = true;
@@ -21,54 +24,72 @@ function kick(el: HTMLVideoElement | null) {
 }
 
 export default function HeroVideo() {
-  const refs = [useRef<HTMLVideoElement>(null), useRef<HTMLVideoElement>(null)];
+  const a = useRef<HTMLVideoElement>(null);
+  const b = useRef<HTMLVideoElement>(null);
   const [active, setActive] = useState(0);
   const activeRef = useRef(0);
   const clip = useRef(0);
   const switching = useRef(false);
-  const reducedMotion = useRef(false);
+  const visible = useRef(true);
+  const enabled = useRef(false);
+  const container = useRef<HTMLDivElement>(null);
+
+  const els = () => [a.current, b.current];
 
   useEffect(() => {
-    const a = refs[0].current;
-    const b = refs[1].current;
-    reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const [va, vb] = els();
+    if (!va || !vb) return;
 
-    if (a) {
-      a.muted = true;
-      a.setAttribute("muted", "");
-      a.src = CLIPS[0];
-      if (reducedMotion.current) a.load();
-      else kick(a);
-    }
-    if (reducedMotion.current) return;
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      enabled.current = true;
+      va.src = clipUrl(0);
+      kick(va);
+      vb.src = clipUrl(1);
+      vb.preload = "auto";
+      vb.load();
+    };
+    // Let the page paint and hydrate first; the poster covers the gap.
+    if (document.readyState === "complete") requestAnimationFrame(start);
+    else window.addEventListener("load", start, { once: true });
 
-    if (b) {
-      b.muted = true;
-      b.setAttribute("muted", "");
-      b.src = CLIPS[1 % CLIPS.length];
-      b.load();
-    }
-    const t = setInterval(() => {
-      const el = refs[activeRef.current].current;
-      if (el && el.paused) kick(el);
-    }, 1000);
-    return () => clearInterval(t);
+    const sync = () => {
+      const el = els()[activeRef.current];
+      if (!el || !enabled.current) return;
+      if (visible.current && !document.hidden) kick(el);
+      else el.pause();
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      visible.current = entry.isIntersecting;
+      sync();
+    });
+    if (container.current) io.observe(container.current);
+    document.addEventListener("visibilitychange", sync);
+
+    return () => {
+      window.removeEventListener("load", start);
+      document.removeEventListener("visibilitychange", sync);
+      io.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onTimeUpdate = (idx: number) => (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const el = e.currentTarget;
-    if (reducedMotion.current || idx !== activeRef.current || !el.duration) return;
-    if (el.duration - el.currentTime < FADE_MS / 1000 && !switching.current) {
+    if (idx !== activeRef.current || !el.duration || switching.current) return;
+    if (el.duration - el.currentTime < FADE_MS / 1000) {
       switching.current = true;
       const nextIdx = 1 - idx;
-      clip.current = (clip.current + 1) % CLIPS.length;
-      kick(refs[nextIdx].current);
+      clip.current = (clip.current + 1) % CLIP_COUNT;
+      kick(els()[nextIdx]);
       activeRef.current = nextIdx;
       setActive(nextIdx);
       setTimeout(() => {
         el.pause();
-        el.src = CLIPS[(clip.current + 1) % CLIPS.length];
+        el.src = clipUrl(clip.current + 1);
         el.load();
         switching.current = false;
       }, FADE_MS);
@@ -76,19 +97,29 @@ export default function HeroVideo() {
   };
 
   return (
-    <div className={styles.heroMedia} aria-hidden="true">
-      {[0, 1].map((i) => (
+    <div ref={container} className={styles.heroMedia} aria-hidden="true">
+      {[a, b].map((ref, i) => (
         <video
           key={i}
-          ref={refs[i]}
+          ref={ref}
           className={styles.video}
           style={{ opacity: active === i ? 1 : 0 }}
+          poster={i === 0 ? HERO_POSTER : undefined}
           muted
           playsInline
-          preload="auto"
+          preload="none"
+          disablePictureInPicture
+          disableRemotePlayback
           onTimeUpdate={onTimeUpdate(i)}
           onCanPlay={(e) => {
-            if (!reducedMotion.current && i === activeRef.current) kick(e.currentTarget);
+            if (enabled.current && visible.current && i === activeRef.current) kick(e.currentTarget);
+          }}
+          onPause={(e) => {
+            // Low-power mode or a browser hiccup can pause us; resume while on screen.
+            const el = e.currentTarget;
+            const shouldPlay = () =>
+              enabled.current && visible.current && !document.hidden && i === activeRef.current && !switching.current;
+            if (shouldPlay()) setTimeout(() => shouldPlay() && el.paused && kick(el), 250);
           }}
         />
       ))}

@@ -1,10 +1,11 @@
-/* eslint-disable @next/next/no-img-element */
+import Image from "next/image";
 import styles from "./page.module.css";
 import HeroVideo from "./components/HeroVideo";
 import Nav from "./components/Nav";
 import StatementReveal from "./components/StatementReveal";
 import WorkOrderForm from "./components/WorkOrderForm";
 import { site, phoneHref } from "./site";
+import { preload } from "react-dom";
 
 const EMAIL = site.email;
 
@@ -132,6 +133,7 @@ function FeatureText({ f }: { f: Feature }) {
 }
 
 export default function Home() {
+  preload("/hero/poster.webp", { as: "image", fetchPriority: "high" });
   return (
     <div className={styles.page}>
       {/* 1. Hero */}
@@ -191,10 +193,11 @@ export default function Home() {
           <FeatureText f={SOURCING} />
         </div>
         <div className={styles.media}>
-          <img
-            src="https://images.unsplash.com/photo-1732395805034-e0bf859665e5?w=1600&q=80&auto=format&fit=crop"
+          <Image
+            src="https://images.unsplash.com/photo-1732395805034-e0bf859665e5?w=2400&q=85&fit=crop"
             alt="Technician in uniform outside a service building"
-            loading="lazy"
+            fill
+            sizes="(min-width: 1248px) 552px, (min-width: 848px) calc(50vw - 72px), calc(100vw - 48px)"
           />
         </div>
       </section>
@@ -202,10 +205,11 @@ export default function Home() {
       {/* 5. Screening */}
       <section id={SCREENING.id} className={styles.feature}>
         <div className={`${styles.media} ${styles.order1}`}>
-          <img
-            src="https://images.unsplash.com/photo-1625148230889-8195e85aae6b?w=1600&q=80&auto=format&fit=crop"
+          <Image
+            src="https://images.unsplash.com/photo-1625148230889-8195e85aae6b?w=2400&q=85&fit=crop"
             alt="Tradesman holding a power tool"
-            loading="lazy"
+            fill
+            sizes="(min-width: 1248px) 552px, (min-width: 848px) calc(50vw - 72px), calc(100vw - 48px)"
           />
         </div>
         <div className={styles.order2}>
