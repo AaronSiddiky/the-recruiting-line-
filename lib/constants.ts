@@ -114,3 +114,9 @@ export const STATE_TIMEZONES: Record<string, string> = {
   WI: 'America/Chicago',   WV: 'America/New_York',   WY: 'America/Denver',
 }
 
+/**
+ * The stats page ignores calls before this instant. Bump it to "reset" the
+ * numbers without touching call history; the CRM and company pages still
+ * show every call.
+ */
+export const STATS_SINCE = '2026-09-13T23:36:08Z'

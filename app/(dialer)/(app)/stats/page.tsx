@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
+import { STATS_SINCE } from '@/lib/constants'
 
 const RANGES = [
   { value: 'all', label: 'All time', days: null },
@@ -33,6 +34,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
       .from('calls')
       .select('agent_id, company_id, status, outcome')
       .neq('status', 'canceled')
+      .gte('started_at', STATS_SINCE)
       .order('started_at', { ascending: false })
       .range(from, from + PAGE - 1)
     if (range.days) {
@@ -122,6 +124,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
             </table>
           </div>
           <p className="mt-3 text-xs text-muted">
+            Counting from {new Date(STATS_SINCE).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.
             Picked up means the call connected to a person. Customers are companies marked
             &ldquo;Became a customer&rdquo; in the exit interview.
           </p>
