@@ -1,14 +1,24 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { ChevronDown, ChevronRight, Sparkles, Loader2 } from 'lucide-react'
 import { OutcomeBadge, StatusBadge } from '@/components/ui/badge'
 import { cn, formatDuration } from '@/lib/utils'
 import type { Call, Profile } from '@/types/db'
 
-type CallRow = Call & { agent: Pick<Profile, 'id' | 'full_name'> | null }
+export type CallRow = Call & {
+  agent: Pick<Profile, 'id' | 'full_name'> | null
+  company?: { id: string; name: string } | null
+}
 
-export function CallHistory({ calls }: { calls: CallRow[] }) {
+export function CallHistory({
+  calls,
+  showCompany = false,
+}: {
+  calls: CallRow[]
+  showCompany?: boolean
+}) {
   if (calls.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border-strong px-4 py-8 text-center">
@@ -20,13 +30,21 @@ export function CallHistory({ calls }: { calls: CallRow[] }) {
   return (
     <ol className="overflow-hidden rounded-lg border border-border-subtle">
       {calls.map((call, i) => (
-        <CallEntry key={call.id} call={call} first={i === 0} />
+        <CallEntry key={call.id} call={call} first={i === 0} showCompany={showCompany} />
       ))}
     </ol>
   )
 }
 
-function CallEntry({ call, first }: { call: CallRow; first: boolean }) {
+function CallEntry({
+  call,
+  first,
+  showCompany,
+}: {
+  call: CallRow
+  first: boolean
+  showCompany: boolean
+}) {
   const [open, setOpen] = useState(first && call.status === 'connected')
   const summary = call.ai_summary
   const started = new Date(call.started_at)
@@ -52,6 +70,22 @@ function CallEntry({ call, first }: { call: CallRow; first: boolean }) {
         </span>
 
         <StatusBadge status={call.status} />
+
+        {showCompany && (
+          <span className="w-44 shrink-0 truncate text-sm">
+            {call.company ? (
+              <Link
+                href={`/companies/${call.company.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="hover:underline"
+              >
+                {call.company.name}
+              </Link>
+            ) : (
+              <span className="text-muted-2">—</span>
+            )}
+          </span>
+        )}
 
         <span className="tnum w-12 shrink-0 text-xs text-muted">
           {formatDuration(call.duration_seconds)}

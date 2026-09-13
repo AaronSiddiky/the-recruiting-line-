@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 import { STATS_SINCE } from '@/lib/constants'
+import { CallHistory, type CallRow } from '../companies/[id]/call-history'
 
 const RANGES = [
   { value: 'all', label: 'All time', days: null },
@@ -13,6 +14,7 @@ type Row = { agent_id: string | null; company_id: string; status: string; outcom
 
 const PAGE = 1000
 const MAX_ROWS = 50_000
+const RECORDINGS_LIMIT = 100
 
 export default async function StatsPage(props: PageProps<'/stats'>) {
   const params = await props.searchParams
@@ -48,6 +50,16 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
     rows.push(...((data ?? []) as Row[]))
     if (!data || data.length < PAGE) break
   }
+
+  let recQ = supabase
+    .from('calls')
+    .select('*, agent:profiles!calls_agent_id_fkey(id, full_name), company:companies(id, name)')
+    .not('recording_path', 'is', null)
+    .gte('started_at', STATS_SINCE)
+    .order('started_at', { ascending: false })
+    .limit(RECORDINGS_LIMIT)
+  if (range.days) recQ = recQ.gte('started_at', sinceIso(range.days))
+  const { data: recordings } = await recQ
 
   const reps = (profiles ?? []).map((p) => {
     const mine = rows.filter((r) => r.agent_id === p.id)
@@ -94,7 +106,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
           Could not load calls: {error}
         </div>
       ) : (
-        <div className="mx-auto w-full max-w-3xl px-4 py-6">
+        <div className="mx-auto w-full max-w-5xl px-4 py-6">
           <div className="overflow-hidden rounded-lg border border-border-subtle">
             <table className="w-full text-sm">
               <thead>
@@ -103,6 +115,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
                   <th className="px-4 py-2 text-right font-medium">Calls</th>
                   <th className="px-4 py-2 text-right font-medium">Picked up</th>
                   <th className="px-4 py-2 text-right font-medium">Customers</th>
+                  <th className="px-4 py-2 text-right font-medium">Conversion</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,6 +125,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
                     <Num value={r.calls} />
                     <Num value={r.pickups} sub={pct(r.pickups, r.calls)} />
                     <Num value={r.customers} good={r.customers > 0} />
+                    <Rate n={r.customers} d={r.pickups} />
                   </tr>
                 ))}
                 <tr className="bg-surface">
@@ -119,6 +133,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
                   <Num value={team.calls} bold />
                   <Num value={team.pickups} sub={pct(team.pickups, team.calls)} bold />
                   <Num value={team.customers} good={team.customers > 0} bold />
+                  <Rate n={team.customers} d={team.pickups} bold />
                 </tr>
               </tbody>
             </table>
@@ -126,8 +141,16 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
           <p className="mt-3 text-xs text-muted">
             Counting from {new Date(STATS_SINCE).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.
             Picked up means the call connected to a person. Customers are companies marked
-            &ldquo;Became a customer&rdquo; in the exit interview.
+            &ldquo;Became a customer&rdquo; in the exit interview. Conversion is customers
+            divided by calls picked up.
           </p>
+
+          <h2 className="mt-8 mb-1 text-sm font-semibold">Recordings</h2>
+          <p className="mb-3 text-xs text-muted">
+            Latest {RECORDINGS_LIMIT} recorded calls. Expand one to play it, read the notes,
+            and see the AI summary. Click the company name for its full history.
+          </p>
+          <CallHistory calls={(recordings ?? []) as unknown as CallRow[]} showCompany />
         </div>
       )}
     </div>
@@ -140,6 +163,14 @@ function sinceIso(days: number) {
 
 function pct(n: number, d: number) {
   return d ? `${Math.round((n / d) * 100)}%` : undefined
+}
+
+function Rate({ n, d, bold }: { n: number; d: number; bold?: boolean }) {
+  return (
+    <td className={cn('tnum px-4 py-3 text-right', bold && 'font-semibold')}>
+      <span className="text-lg leading-none">{d ? `${Math.round((n / d) * 100)}%` : '—'}</span>
+    </td>
+  )
 }
 
 function Num({ value, sub, good, bold }: { value: number; sub?: string; good?: boolean; bold?: boolean }) {
