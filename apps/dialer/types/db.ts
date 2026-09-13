@@ -1,0 +1,163 @@
+// Hand-written to match supabase/migrations. Once the project is linked you
+// can replace this with `supabase gen types typescript --linked > types/db.ts`.
+
+export type CallOutcome =
+  | 'meeting_booked'
+  | 'not_interested'
+  | 'wrong_number'
+  | 'call_back'
+
+export type CallStatus =
+  | 'dialing'
+  | 'ringing'
+  | 'connected'
+  | 'no_answer'
+  | 'busy'
+  | 'failed'
+  | 'voicemail'
+  | 'canceled'
+
+export type UserRole = 'rep' | 'manager' | 'admin'
+
+export type AiStatus = 'none' | 'pending' | 'processing' | 'ready' | 'failed'
+
+/** Shape of `calls.ai_summary`. Produced by the summarizer, read by the UI. */
+export type AiSummary = {
+  headline: string
+  summary: string
+  objections: string[]
+  commitments: string[]
+  suggested_outcome: CallOutcome | null
+  next_step: string | null
+}
+
+export type Profile = {
+  id: string
+  full_name: string
+  email: string | null
+  role: UserRole
+  created_at: string
+}
+
+export type Company = {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  phone: string
+  owner_id: string | null
+  response: CallOutcome | null
+  call_count: number
+  last_called_at: string | null
+  next_follow_up: string | null
+  notes: string
+  do_not_call: boolean
+  timezone: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CallSession = {
+  id: string
+  agent_id: string
+  conference_name: string
+  lines_per_batch: number
+  status: 'active' | 'ended'
+  started_at: string
+  ended_at: string | null
+}
+
+export type DialBatch = {
+  id: string
+  session_id: string
+  seq: number
+  winner_call_id: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export type Call = {
+  id: string
+  company_id: string
+  agent_id: string | null
+  session_id: string | null
+  batch_id: string | null
+  call_sid: string | null
+  status: CallStatus
+  amd_result: string | null
+  outcome: CallOutcome | null
+  notes: string | null
+  started_at: string
+  answered_at: string | null
+  ended_at: string | null
+  duration_seconds: number | null
+  recording_sid: string | null
+  recording_path: string | null
+  recording_duration: number | null
+  transcript: string | null
+  ai_summary: AiSummary | null
+  ai_status: AiStatus
+  ai_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+type Table<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
+  Row: Row
+  Insert: Insert
+  Update: Update
+  Relationships: []
+}
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: Table<Profile>
+      companies: Table<
+        Company,
+        Omit<
+          Company,
+          | 'id'
+          | 'response'
+          | 'call_count'
+          | 'last_called_at'
+          | 'created_at'
+          | 'updated_at'
+        > &
+          Partial<Pick<Company, 'id' | 'notes' | 'do_not_call'>>
+      >
+      call_sessions: Table<CallSession>
+      dial_batches: Table<DialBatch>
+      calls: Table<Call>
+    }
+    Views: Record<string, never>
+    Functions: {
+      start_dial_batch: {
+        Args: { p_session: string; p_agent: string; p_limit?: number }
+        Returns: {
+          call_id: string
+          batch_id: string
+          company_id: string
+          company_name: string
+          phone: string
+        }[]
+      }
+      claim_batch_winner: {
+        Args: { p_batch_id: string; p_call_id: string }
+        Returns: boolean
+      }
+      is_privileged: { Args: Record<string, never>; Returns: boolean }
+    }
+    Enums: {
+      call_outcome: CallOutcome
+      call_status: CallStatus
+      user_role: UserRole
+    }
+    CompositeTypes: Record<string, never>
+  }
+}
+
+/** A company row joined with its owner, as the CRM table renders it. */
+export type CompanyRow = Company & {
+  owner: Pick<Profile, 'id' | 'full_name'> | null
+}
