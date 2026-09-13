@@ -74,7 +74,6 @@ export default function HeroVideo() {
       document.removeEventListener("visibilitychange", sync);
       io.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onTimeUpdate = (idx: number) => (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -98,10 +97,10 @@ export default function HeroVideo() {
 
   return (
     <div ref={container} className={styles.heroMedia} aria-hidden="true">
-      {[a, b].map((ref, i) => (
+      {[0, 1].map((i) => (
         <video
           key={i}
-          ref={ref}
+          ref={i === 0 ? a : b}
           className={styles.video}
           style={{ opacity: active === i ? 1 : 0 }}
           poster={i === 0 ? HERO_POSTER : undefined}

@@ -59,18 +59,25 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  /*
+   * Only the dialer/CRM is behind sign-in. The marketing site (/, /api/lead,
+   * icons, hero media) is public, so it never runs through here.
+   *
+   * Twilio webhooks (/api/twilio) must never be redirected to /login -- Twilio
+   * would see a 307 and mark the call failed. The session routes (/api/session)
+   * are left out for cost, not correctness: each one calls getUser() and checks
+   * that the session belongs to the caller, and the dialer polls one of them
+   * every 1.5 seconds while lines are out.
+   */
   matcher: [
-    /*
-     * Everything except static assets, the Twilio webhook surface, and the
-     * dialer's session API.
-     *
-     * Webhooks must never be redirected to /login -- Twilio would see a 307
-     * and mark the call failed. The session routes are excluded for cost, not
-     * correctness: each one calls getUser() and checks that the session
-     * belongs to the caller, so running them through here only adds a second
-     * auth round-trip -- and the dialer polls one of them every 1.5 seconds
-     * while lines are out.
-     */
-    '/((?!_next/static|_next/image|favicon.ico|api/twilio|api/session|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/login',
+    '/auth/:path*',
+    '/leads/:path*',
+    '/crm/:path*',
+    '/dialer/:path*',
+    '/companies/:path*',
+    '/lead-list/:path*',
+    '/api/calls/:path*',
+    '/api/recordings/:path*',
   ],
 }

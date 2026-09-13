@@ -1,11 +1,15 @@
-import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // npm workspaces hoist dependencies to the monorepo root, so Turbopack's
-  // root has to be the repo root for it to resolve them.
+  // A stray package.json/lockfile above this directory would otherwise make
+  // Turbopack infer the wrong workspace root.
   turbopack: {
-    root: path.join(__dirname, "../.."),
+    root: __dirname,
+  },
+  experimental: {
+    // The marketing site and the dialer have separate root layouts, so there is
+    // no single layout to compose a 404 from; app/global-not-found.tsx covers both.
+    globalNotFound: true,
   },
   images: {
     formats: ["image/avif", "image/webp"],

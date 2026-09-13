@@ -8,6 +8,7 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 export const metadata: Metadata = {
   title: 'RecruitingLine',
   description: 'Parallel dialer and CRM for recruiting outbound.',
+  robots: { index: false, follow: false },
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /* ---------- CSV parsing (quotes, escaped quotes, CRLF) ---------- */
@@ -129,6 +130,8 @@ export default function LeadsBrowser() {
       if (saved) {
         const { name, text } = JSON.parse(saved);
         const rows = parseCsv(text);
+        // localStorage only exists in the browser, so the saved file can only be restored after mount.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (rows.length > 1) { setLeads(buildLeads(rows)); setFileName(name); }
       }
     } catch { /* fresh start */ }
@@ -208,7 +211,7 @@ export default function LeadsBrowser() {
       <div className="hazard" aria-hidden="true" />
       <nav>
         <div className="nav-in">
-          <a className="logo" href="/">The <span>Recruiting</span> Line</a>
+          <Link className="logo" href="/">The <span>Recruiting</span> Line</Link>
           <span className="leads-tag">Lead list — internal</span>
         </div>
       </nav>

@@ -3,10 +3,8 @@ export const site = {
   // Direct line shown under the lead form, e.g. "(555) 123-4567".
   phone: "",
   email: "contact@therecruitingline.com",
-  // The dialer/CRM (apps/dialer). Override with NEXT_PUBLIC_DIALER_URL; in dev it runs on :3001.
-  dialerLoginUrl:
-    (process.env.NEXT_PUBLIC_DIALER_URL ??
-      (process.env.NODE_ENV === "development" ? "http://localhost:3001" : "https://app.therecruitingline.com")) + "/login",
+  // The dialer/CRM login lives on this same site.
+  dialerLoginUrl: "/login",
 };
 
 export function phoneHref(phone: string) {

@@ -2,16 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "web",
+      "name": "recruitingline",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:web"],
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
-    },
-    {
-      "name": "dialer",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:dialer"],
-      "port": 3001
     }
   ]
 }
