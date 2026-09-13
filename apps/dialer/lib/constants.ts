@@ -75,6 +75,14 @@ export const DEFAULT_LINES_PER_BATCH = 4
 /** Ring for this long before giving up on a leg. */
 export const DIAL_TIMEOUT_SECONDS = 25
 
+/**
+ * Ceiling on answering-machine detection. The rest of a batch keeps ringing
+ * until detection rules on the first pickup, so this bounds how long those
+ * lines can overlap a live conversation. Twilio's default is 30s and its
+ * minimum is 3; people are usually identified in two or three seconds.
+ */
+export const AMD_TIMEOUT_SECONDS = 5
+
 /** Local hours during which it is acceptable to dial a prospect. */
 export const CALLING_HOURS = { start: 8, end: 20 } as const
 

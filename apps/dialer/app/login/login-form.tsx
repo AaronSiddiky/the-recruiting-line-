@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 const INITIAL: LoginState = { error: null }
 
 export function LoginForm() {
-  const next = useSearchParams().get('next') ?? '/crm'
+  const next = useSearchParams().get('next') ?? '/leads'
   const [state, action, pending] = useActionState(signIn, INITIAL)
 
   return (

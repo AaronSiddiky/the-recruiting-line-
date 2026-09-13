@@ -14,6 +14,8 @@ const patchSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   city: z.string().max(100).nullable().optional(),
   state: z.string().length(2).nullable().optional(),
+  source: z.string().trim().max(100).nullable().optional(),
+  reached_out: z.boolean().optional(),
 })
 
 /**
@@ -38,6 +40,7 @@ export async function updateCompany(id: string, patch: unknown) {
   if (error) return { error: error.message }
 
   revalidatePath('/crm')
+  revalidatePath('/leads')
   revalidatePath(`/companies/${id}`)
   return { error: null }
 }

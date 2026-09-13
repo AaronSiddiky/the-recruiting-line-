@@ -65,6 +65,9 @@ const HEADER_ALIASES: Record<string, string> = {
   tel: 'phone',
   telephone: 'phone',
   notes: 'notes',
+  source: 'source',
+  leadsource: 'source',
+  channel: 'source',
   note: 'notes',
 }
 

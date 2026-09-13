@@ -2,7 +2,7 @@ import { after } from 'next/server'
 import twilio from 'twilio'
 import { verifyTwilioRequest, twiml } from '@/lib/twilio/verify'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { hangUpLosers, startRecording } from '@/lib/twilio/calls'
+import { startRecording } from '@/lib/twilio/calls'
 import { LOSING_LEG_BEHAVIOR, LOSING_LEG_WHISPER } from '@/lib/constants'
 
 /**
@@ -14,9 +14,12 @@ import { LOSING_LEG_BEHAVIOR, LOSING_LEG_WHISPER } from '@/lib/constants'
  * webhooks land. Nothing here decides the winner in application code, because
  * anything we wrote by hand would be a check-then-act race.
  *
- * The winner's TwiML goes back immediately. Everything else (hanging up the
- * other legs, starting the recording) happens after the response is flushed so
- * the person who just said "hello" is not listening to silence.
+ * The winner's TwiML goes back immediately and the recording starts after the
+ * response is flushed, so the person who just said "hello" is not listening to
+ * silence. The other legs are deliberately left ringing: until machine
+ * detection rules, this pickup may be a voicemail greeting, and dropping three
+ * live lines for a recording is how a batch gets wasted. /api/twilio/amd drops
+ * them once a person is confirmed, or hands the batch back if it was a machine.
  */
 export async function POST(request: Request) {
   const verified = await verifyTwilioRequest(request)
@@ -52,9 +55,12 @@ export async function POST(request: Request) {
 
   if (lost) {
     after(async () => {
+      const now = new Date().toISOString()
+      // answered_at records that a person picked up and heard us hang up, which
+      // is a different thing from a leg that stopped ringing unanswered.
       await admin
         .from('calls')
-        .update({ status: 'canceled', ended_at: new Date().toISOString() })
+        .update({ status: 'canceled', answered_at: now, ended_at: now })
         .eq('id', callId)
     })
 
@@ -76,8 +82,6 @@ export async function POST(request: Request) {
         call_sid: callSid,
       })
       .eq('id', callId)
-
-    if (batchId) await hangUpLosers(batchId, callId)
 
     try {
       await startRecording(callSid, callId)

@@ -1,5 +1,6 @@
 import { verifyTwilioRequest } from '@/lib/twilio/verify'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { hangUpLosers } from '@/lib/twilio/calls'
 import type { Call, CallStatus } from '@/types/db'
 
 /**
@@ -26,16 +27,16 @@ export async function POST(request: Request) {
 
   const { params, url } = verified
   const callId = url.searchParams.get('callId')
-  if (!callId) return new Response('', { status: 204 })
+  if (!callId) return new Response(null, { status: 204 })
 
   const admin = createAdminClient()
   const { data: call } = await admin
     .from('calls')
-    .select('status')
+    .select('status, batch_id, amd_result')
     .eq('id', callId)
     .maybeSingle()
 
-  if (!call) return new Response('', { status: 204 })
+  if (!call) return new Response(null, { status: 204 })
 
   const twilioStatus = params.CallStatus
   const patch: Partial<Call> = {}
@@ -62,5 +63,18 @@ export async function POST(request: Request) {
     await admin.from('calls').update(patch).eq('id', callId)
   }
 
-  return new Response('', { status: 204 })
+  // The rest of a batch normally drops when machine detection confirms a
+  // person. A pickup that hangs up before that verdict would otherwise leave
+  // those lines ringing, and a second pickup would bridge into the exit
+  // interview.
+  if (
+    twilioStatus === 'completed' &&
+    call.batch_id &&
+    call.status === 'connected' &&
+    !call.amd_result
+  ) {
+    await hangUpLosers(call.batch_id, callId)
+  }
+
+  return new Response(null, { status: 204 })
 }

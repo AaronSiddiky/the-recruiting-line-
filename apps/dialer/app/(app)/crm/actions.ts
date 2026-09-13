@@ -74,6 +74,7 @@ export async function importCompanies(
       state,
       phone,
       notes: record.notes || '',
+      source: record.source || null,
       timezone: timezoneForState(state),
       owner_id: user.id,
     })
@@ -93,5 +94,6 @@ export async function importCompanies(
   }
 
   revalidatePath('/crm')
+  revalidatePath('/leads')
   return { inserted: count ?? payload.length, skipped: errors.length, errors }
 }

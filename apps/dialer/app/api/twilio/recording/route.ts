@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const recordingSid = params.RecordingSid
 
   if (!callId || !recordingSid || params.RecordingStatus !== 'completed') {
-    return new Response('', { status: 204 })
+    return new Response(null, { status: 204 })
   }
 
   const admin = createAdminClient()
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     .eq('id', callId)
     .maybeSingle()
 
-  if (!call || call.recording_path) return new Response('', { status: 204 })
+  if (!call || call.recording_path) return new Response(null, { status: 204 })
 
   const duration = params.RecordingDuration ? Number(params.RecordingDuration) : null
 
@@ -71,5 +71,5 @@ export async function POST(request: Request) {
     }
   })
 
-  return new Response('', { status: 204 })
+  return new Response(null, { status: 204 })
 }

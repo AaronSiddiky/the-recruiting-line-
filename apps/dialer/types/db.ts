@@ -53,6 +53,10 @@ export type Company = {
   notes: string
   do_not_call: boolean
   timezone: string | null
+  /** Where the lead came from, free text (e.g. "Google Maps", "Referral"). */
+  source: string | null
+  /** True once anyone has contacted them. Set by the first real call, or by hand. */
+  reached_out: boolean
   created_at: string
   updated_at: string
 }
@@ -123,8 +127,10 @@ export type Database = {
           | 'last_called_at'
           | 'created_at'
           | 'updated_at'
+          | 'source'
+          | 'reached_out'
         > &
-          Partial<Pick<Company, 'id' | 'notes' | 'do_not_call'>>
+          Partial<Pick<Company, 'id' | 'notes' | 'do_not_call' | 'source' | 'reached_out'>>
       >
       call_sessions: Table<CallSession>
       dial_batches: Table<DialBatch>

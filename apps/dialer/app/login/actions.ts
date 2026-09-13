@@ -12,7 +12,7 @@ export async function signIn(
 ): Promise<LoginState> {
   const email = String(formData.get('email') ?? '').trim()
   const password = String(formData.get('password') ?? '')
-  const next = String(formData.get('next') ?? '/crm')
+  const next = String(formData.get('next') ?? '/leads')
 
   if (!email || !password) {
     return { error: 'Email and password are required.' }
@@ -27,5 +27,5 @@ export async function signIn(
   }
 
   revalidatePath('/', 'layout')
-  redirect(next.startsWith('/') ? next : '/crm')
+  redirect(next.startsWith('/') ? next : '/leads')
 }

@@ -1,34 +1,35 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Call as TwilioCall, Device as TwilioDevice } from '@twilio/voice-sdk'
 import { createClient } from '@/lib/supabase/client'
-import type { Call, CallStatus } from '@/types/db'
+import { playCue, primeAudio } from './audio-cues'
+import {
+  describeLine,
+  dialerReducer,
+  initialDialerState,
+  selectLines,
+  selectLiveLine,
+  selectStats,
+  type CallRow,
+  type LineMeta,
+  type SyncState,
+} from './dialer-machine'
 
-export type Line = {
-  callId: string
-  companyId: string
-  companyName: string
-  phone: string
-  status: CallStatus
-}
+export type { DialerPhase, Line, WrapCall } from './dialer-machine'
 
-export type DialerPhase =
-  | 'idle'        // nothing running
-  | 'connecting'  // acquiring mic + joining the conference
-  | 'ready'       // parked in the conference, no batch out
-  | 'dialing'     // a batch is ringing
-  | 'live'        // bridged to a prospect
-  | 'wrapup'      // call over, exit interview open
-  | 'exhausted'   // queue is dry
+export type AgentLineState = 'offline' | 'connecting' | 'open' | 'reconnecting'
+export type AgentAudio = { line: AgentLineState; muted: boolean; warnings: string[] }
+export type AudioLevels = { input: number; output: number }
 
 type BatchResponse = {
   batchId?: string
-  lines?: Omit<Line, 'status'>[]
+  lines?: LineMeta[]
   skippedForHours?: number
   exhausted?: boolean
-  error?: string
 }
+
+const OFFLINE_AGENT: AgentAudio = { line: 'offline', muted: false, warnings: [] }
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -42,343 +43,391 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
 }
 
 /**
- * The dialer state machine.
+ * Drives the dialer: the agent's softphone on one side, the prospects' legs on
+ * the other.
  *
- * Two independent event sources drive it and they do not agree on timing:
- *
- *  - The Twilio Device tells us about *our own* audio (mic acquired, joined
- *    the conference, disconnected).
- *  - Supabase Realtime tells us what happened to the *prospects'* legs, which
- *    is what the four line indicators and the connect/disconnect transitions
- *    are actually based on.
- *
- * Deriving phase from the database rather than from the softphone is
- * deliberate: the winner is decided server-side, and the browser finding out
- * about it a beat later is fine. The reverse -- guessing locally who connected
- * -- would drift from the truth the moment a webhook was slow.
+ * The softphone reports on the agent's own audio -- connected, muted, mic
+ * level, network trouble -- and that lives here. What happened to each prospect
+ * is decided server-side and read back as call rows (see dialer-machine.ts),
+ * streamed over Realtime and confirmed by polling: a screen that silently
+ * stopped updating mid-call is worse than no screen at all.
  */
 export function useDialer() {
-  const [phase, setPhase] = useState<DialerPhase>('idle')
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [lines, setLines] = useState<Line[]>([])
-  const [liveCall, setLiveCall] = useState<Line | null>(null)
-  const [wrapCall, setWrapCall] = useState<Line | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [muted, setMuted] = useState(false)
-  const [stats, setStats] = useState({ dialed: 0, connected: 0 })
-  const manualRef = useRef(false)
+  const [state, dispatch] = useReducer(dialerReducer, initialDialerState)
+  const [agent, setAgent] = useState<AgentAudio>(OFFLINE_AGENT)
+  const [sync, setSync] = useState<SyncState>('offline')
 
-  const linesRef = useRef<Line[]>([])
+  const levelsRef = useRef<AudioLevels>({ input: 0, output: 0 })
   const deviceRef = useRef<TwilioDevice | null>(null)
   const connectionRef = useRef<TwilioCall | null>(null)
-  const phaseRef = useRef<DialerPhase>('idle')
+  const endingRef = useRef(false)
+  const stateRef = useRef(state)
+  const prevPhaseRef = useRef(state.phase)
+  const prevNoticeRef = useRef<number | undefined>(undefined)
 
-  // The Twilio 'disconnect' handler is registered once and would otherwise
-  // close over the phase at registration time.
   useEffect(() => {
-    phaseRef.current = phase
-  }, [phase])
+    stateRef.current = state
+  }, [state])
 
-  // Realtime callbacks need the current lines without re-subscribing the
-  // channel on every status change.
-  useEffect(() => {
-    linesRef.current = lines
-  }, [lines])
+  const { sessionId, phase, settledAt, mode } = state
 
-  // --- Realtime: the prospects' legs -------------------------------------
+  // --- Prospect legs: polling (always) ----------------------------------------
+
+  const refresh = useCallback(async (id: string) => {
+    try {
+      const response = await fetch(`/api/session/${id}/calls`, { cache: 'no-store' })
+      if (!response.ok) throw new Error(String(response.status))
+      const data = (await response.json()) as { calls: CallRow[] }
+      dispatch({ type: 'ROWS', rows: data.calls, now: Date.now() })
+      setSync((current) => (current === 'offline' || current === 'connecting' ? 'polling' : current))
+    } catch {
+      setSync('offline')
+    }
+  }, [])
+
+  const dialingOrLive = phase === 'dialing' || phase === 'live'
 
   useEffect(() => {
     if (!sessionId) return
+    // Poll hard whenever lines are out and Realtime isn't confirmed. Keep a
+    // slower reconciliation poll even when it is: sockets die quietly.
+    const every = !dialingOrLive ? 8000 : sync === 'live' ? 3000 : 1500
+    const timer = setInterval(() => void refresh(sessionId), every)
+    return () => clearInterval(timer)
+  }, [sessionId, dialingOrLive, sync, refresh])
 
+  // --- Prospect legs: Realtime (fast path) ------------------------------------
+
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
     const supabase = createClient()
-    const channel = supabase
-      .channel(`dialer:${sessionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'calls',
-          filter: `session_id=eq.${sessionId}`,
-        },
-        ({ new: row }) => {
-          const call = row as Call
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-          setLines((current) =>
-            current.map((line) =>
-              line.callId === call.id ? { ...line, status: call.status } : line,
-            ),
-          )
+    void (async () => {
+      // Attach the signed-in user's JWT before joining. Without it the socket
+      // can join as an anonymous client, and RLS then filters out every call
+      // row without raising an error: the dialer simply never hears anything.
+      await supabase.auth.getSession()
+      await supabase.realtime.setAuth()
+      if (cancelled) return
 
-          const match = linesRef.current.find((l) => l.callId === call.id)
-          if (!match) return
-
-          if (call.status === 'connected' && !call.ended_at) {
-            setLiveCall(match)
-            setPhase('live')
-            setStats((current) => ({ ...current, connected: current.connected + 1 }))
-          }
-
-          // The prospect (or we) hung up. Wrap up only a call that actually
-          // connected -- a batch of four no-answers should roll straight into
-          // the next batch without an exit interview.
-          if (call.ended_at && call.status === 'connected') {
-            setLiveCall(null)
-            setWrapCall(match)
-            setPhase('wrapup')
-          }
-        },
-      )
-      .subscribe()
+      channel = supabase
+        .channel(`dialer:${sessionId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'calls', filter: `session_id=eq.${sessionId}` },
+          (payload) => {
+            const row = payload.new as CallRow
+            if (row?.id) dispatch({ type: 'ROWS', rows: [row], now: Date.now() })
+          },
+        )
+        .subscribe((status) => {
+          if (!cancelled) setSync(status === 'SUBSCRIBED' ? 'live' : 'polling')
+        })
+    })()
 
     return () => {
-      void supabase.removeChannel(channel)
+      cancelled = true
+      if (channel) void supabase.removeChannel(channel)
     }
   }, [sessionId])
 
-  // --- A batch that fully fizzles should roll on by itself ----------------
+  // --- The agent's own line ---------------------------------------------------
+
+  const connectSoftphone = useCallback(async (id: string) => {
+    const tokenResponse = await fetch('/api/twilio/token')
+    const { token, error } = (await tokenResponse.json()) as { token?: string; error?: string }
+    if (!token) throw new Error(error ?? 'Could not get a voice token.')
+
+    // Loaded lazily: the Voice SDK touches `window` at import time.
+    const { Device } = await import('@twilio/voice-sdk')
+    const device = new Device(token, { logLevel: 'error' })
+    deviceRef.current = device
+    device.on('error', (e: { message: string }) => dispatch({ type: 'ERROR', message: e.message }))
+
+    setAgent({ line: 'connecting', muted: false, warnings: [] })
+    const connection = await device.connect({ params: { sessionId: id } })
+    connectionRef.current = connection
+
+    connection.on('accept', () => setAgent((a) => ({ ...a, line: 'open' })))
+    connection.on('reconnecting', () => setAgent((a) => ({ ...a, line: 'reconnecting' })))
+    connection.on('reconnected', () => setAgent((a) => ({ ...a, line: 'open' })))
+    connection.on('mute', (isMuted: boolean) => setAgent((a) => ({ ...a, muted: isMuted })))
+    connection.on('warning', (name: string) =>
+      setAgent((a) => (a.warnings.includes(name) ? a : { ...a, warnings: [...a.warnings, name] })),
+    )
+    connection.on('warning-cleared', (name: string) =>
+      setAgent((a) => ({ ...a, warnings: a.warnings.filter((w) => w !== name) })),
+    )
+    // Fires many times a second. Written to a ref and read by the meters on
+    // animation frames, so it never re-renders the dialer.
+    connection.on('volume', (input: number, output: number) => {
+      levelsRef.current = { input, output }
+    })
+    connection.on('disconnect', () => {
+      connectionRef.current = null
+      levelsRef.current = { input: 0, output: 0 }
+      setAgent(OFFLINE_AGENT)
+      if (!endingRef.current) {
+        dispatch({ type: 'SESSION_ENDED', error: 'Your line dropped. Start again to keep dialing.' })
+        void postJson('/api/session/end', { sessionId: id }).catch(() => undefined)
+      }
+    })
+
+    if (connection.status() === 'open') setAgent((a) => ({ ...a, line: 'open' }))
+  }, [])
+
+  // --- Dialing ----------------------------------------------------------------
 
   const startBatch = useCallback(
     async (id: string) => {
-      setError(null)
-      manualRef.current = false
-      setPhase('dialing')
-
+      dispatch({ type: 'DIAL_REQUESTED', mode: 'batch' })
       try {
-        const result = await postJson<BatchResponse>('/api/session/batch', {
-          sessionId: id,
-        })
-
+        const result = await postJson<BatchResponse>('/api/session/batch', { sessionId: id })
         if (result.exhausted || !result.lines?.length) {
-          setLines([])
-          setPhase('exhausted')
+          dispatch({ type: 'QUEUE_EXHAUSTED' })
           return
         }
-
-        setLines(result.lines.map((line) => ({ ...line, status: 'dialing' as CallStatus })))
-        setStats((s) => ({ ...s, dialed: s.dialed + result.lines!.length }))
+        dispatch({
+          type: 'LINES_STARTED',
+          mode: 'batch',
+          lines: result.lines,
+          nowMs: Date.now(),
+          skippedForHours: result.skippedForHours,
+        })
+        void refresh(id)
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not start the batch.')
-        setPhase('ready')
+        dispatch({ type: 'DIAL_FAILED', message: e instanceof Error ? e.message : 'Could not start the batch.' })
       }
     },
-    [],
+    [refresh],
   )
 
-  useEffect(() => {
-    if (phase !== 'dialing' || lines.length === 0) return
-    // A hand-dialed number that nobody answered should hand the agent back the
-    // dial pad, not silently start burning through the queue.
-    if (manualRef.current) {
-      const done = lines.every((line) =>
-        ['no_answer', 'busy', 'failed', 'voicemail', 'canceled'].includes(line.status),
-      )
-      if (done) {
-        const timer = setTimeout(() => {
-          manualRef.current = false
-          setLines([])
-          setPhase('ready')
-        }, 900)
-        return () => clearTimeout(timer)
-      }
-      return
-    }
-
-    const settled = lines.every((line) =>
-      ['no_answer', 'busy', 'failed', 'voicemail', 'canceled'].includes(line.status),
-    )
-    if (!settled || !sessionId) return
-
-    // Every line died without a connect. Give the UI a beat to render the
-    // final states, then fan out again.
-    const timer = setTimeout(() => void startBatch(sessionId), 900)
-    return () => clearTimeout(timer)
-  }, [phase, lines, sessionId, startBatch])
-
-  // --- Session lifecycle --------------------------------------------------
+  const openSession = useCallback(async () => {
+    endingRef.current = false
+    dispatch({ type: 'SESSION_CONNECTING' })
+    setSync('connecting')
+    const session = await postJson<{ sessionId: string }>('/api/session/start')
+    await connectSoftphone(session.sessionId)
+    dispatch({ type: 'SESSION_READY', sessionId: session.sessionId })
+    return session.sessionId
+  }, [connectSoftphone])
 
   const start = useCallback(async () => {
-    setError(null)
-    setPhase('connecting')
-    setStats({ dialed: 0, connected: 0 })
-
+    primeAudio()
     try {
-      const session = await postJson<{ sessionId: string }>('/api/session/start')
-
-      const tokenResponse = await fetch('/api/twilio/token')
-      const { token, error: tokenError } = (await tokenResponse.json()) as {
-        token?: string
-        error?: string
-      }
-      if (!token) throw new Error(tokenError ?? 'Could not get a voice token.')
-
-      // Loaded lazily: the Voice SDK touches `window` at import time and would
-      // break server rendering.
-      const { Device } = await import('@twilio/voice-sdk')
-      const device = new Device(token, { logLevel: 'error' })
-      deviceRef.current = device
-
-      device.on('error', (deviceError: { message: string }) => {
-        setError(deviceError.message)
-      })
-
-      const connection = await device.connect({
-        params: { sessionId: session.sessionId },
-      })
-      connectionRef.current = connection
-
-      connection.on('disconnect', () => {
-        connectionRef.current = null
-        if (phaseRef.current !== 'idle') setPhase('idle')
-      })
-
-      setSessionId(session.sessionId)
-      setPhase('ready')
-      await startBatch(session.sessionId)
+      const id = await openSession()
+      await startBatch(id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the session.')
-      setPhase('idle')
+      dispatch({ type: 'SESSION_ENDED', error: e instanceof Error ? e.message : 'Could not start the session.' })
+      setSync('offline')
     }
+  }, [openSession, startBatch])
+
+  /**
+   * Dial one hand-typed number. Opens a session first if none is running, so
+   * the pad works as a plain phone.
+   */
+  const manualDial = useCallback(
+    async (phone: string) => {
+      primeAudio()
+      try {
+        const id = stateRef.current.sessionId ?? (await openSession())
+        dispatch({ type: 'DIAL_REQUESTED', mode: 'manual' })
+        const { line } = await postJson<{ line: LineMeta }>('/api/session/dial', {
+          sessionId: id,
+          phone,
+        })
+        dispatch({ type: 'LINES_STARTED', mode: 'manual', lines: [line], nowMs: Date.now() })
+        void refresh(id)
+      } catch (e) {
+        dispatch({ type: 'DIAL_FAILED', message: e instanceof Error ? e.message : 'Could not place the call.' })
+      }
+    },
+    [openSession, refresh],
+  )
+
+  const resumeQueue = useCallback(() => {
+    const id = stateRef.current.sessionId
+    if (id) void startBatch(id)
   }, [startBatch])
 
   const end = useCallback(async () => {
-    const id = sessionId
+    const id = stateRef.current.sessionId
+    endingRef.current = true
     connectionRef.current?.disconnect()
     deviceRef.current?.destroy()
     connectionRef.current = null
     deviceRef.current = null
-
-    setPhase('idle')
-    setLines([])
-    setLiveCall(null)
-    setWrapCall(null)
-    setSessionId(null)
-
+    levelsRef.current = { input: 0, output: 0 }
+    setAgent(OFFLINE_AGENT)
+    setSync('offline')
+    dispatch({ type: 'SESSION_ENDED' })
     if (id) await postJson('/api/session/end', { sessionId: id }).catch(() => undefined)
-  }, [sessionId])
+  }, [])
 
   const hangUp = useCallback(async () => {
-    if (!liveCall) return
-    await postJson(`/api/calls/${liveCall.callId}/hangup`).catch(() => undefined)
-  }, [liveCall])
+    const { liveCallId, sessionId: id } = stateRef.current
+    if (!liveCallId) return
+    // Recorded before the request, so the exit interview can say who ended it.
+    dispatch({ type: 'AGENT_HANGUP', callId: liveCallId })
+    await postJson(`/api/calls/${liveCallId}/hangup`).catch(() => undefined)
+    if (id) void refresh(id)
+  }, [refresh])
+
+  const skipBatch = useCallback(async () => {
+    const current = stateRef.current
+    const out = selectLines(current).filter(
+      (line) => !line.endedAt && (line.status === 'dialing' || line.status === 'ringing'),
+    )
+    await Promise.all(
+      out.map((line) => postJson(`/api/calls/${line.callId}/hangup`).catch(() => undefined)),
+    )
+    if (current.sessionId) void refresh(current.sessionId)
+  }, [refresh])
 
   const toggleMute = useCallback(() => {
     const connection = connectionRef.current
     if (!connection) return
-    const next = !muted
-    connection.mute(next)
-    setMuted(next)
-  }, [muted])
+    connection.mute(!connection.isMuted())
+    // The 'mute' event confirms it; set now so the button never lags a press.
+    setAgent((a) => ({ ...a, muted: connection.isMuted() }))
+  }, [])
 
-  /**
-   * Dial one hand-typed number.
-   *
-   * If no session is running this opens one first, which is what makes the pad
-   * usable as a plain phone: the agent should not have to understand that a
-   * conference has to exist before a call can be bridged into it.
-   */
-  const manualDial = useCallback(
-    async (phone: string) => {
-      setError(null)
-      let id = sessionId
-
-      try {
-        if (!id) {
-          setPhase('connecting')
-          const session = await postJson<{ sessionId: string }>('/api/session/start')
-
-          const tokenResponse = await fetch('/api/twilio/token')
-          const { token, error: tokenError } = (await tokenResponse.json()) as {
-            token?: string
-            error?: string
-          }
-          if (!token) throw new Error(tokenError ?? 'Could not get a voice token.')
-
-          const { Device } = await import('@twilio/voice-sdk')
-          const device = new Device(token, { logLevel: 'error' })
-          deviceRef.current = device
-          device.on('error', (e: { message: string }) => setError(e.message))
-
-          const connection = await device.connect({
-            params: { sessionId: session.sessionId },
-          })
-          connectionRef.current = connection
-          connection.on('disconnect', () => {
-            connectionRef.current = null
-            if (phaseRef.current !== 'idle') setPhase('idle')
-          })
-
-          id = session.sessionId
-          setSessionId(id)
-        }
-
-        manualRef.current = true
-        setPhase('dialing')
-
-        const { line } = await postJson<{ line: Omit<Line, 'status'> }>(
-          '/api/session/dial',
-          { sessionId: id, phone },
-        )
-
-        setLines([{ ...line, status: 'dialing' as CallStatus }])
-        setStats((s) => ({ ...s, dialed: s.dialed + 1 }))
-      } catch (e) {
-        manualRef.current = false
-        setError(e instanceof Error ? e.message : 'Could not place the call.')
-        setPhase(id ? 'ready' : 'idle')
-      }
-    },
-    [sessionId],
-  )
-
-  /**
-   * Send DTMF into the conference. Phone trees are unavoidable on cold calls --
-   * without this the agent hits "press 1 for sales" and is stuck.
-   */
+  /** DTMF into the conference, for phone trees. */
   const sendDigits = useCallback((digits: string) => {
     connectionRef.current?.sendDigits(digits)
   }, [])
 
-  const finishWrapup = useCallback(async () => {
-    setWrapCall(null)
-    if (manualRef.current) {
-      manualRef.current = false
-      setLines([])
-      setPhase('ready')
-      return
-    }
-    if (sessionId) await startBatch(sessionId)
-  }, [sessionId, startBatch])
+  const finishWrapup = useCallback(() => {
+    const current = stateRef.current
+    dispatch({ type: 'WRAPUP_DONE' })
+    if (current.mode === 'batch' && current.sessionId) void startBatch(current.sessionId)
+  }, [startBatch])
 
-  // Tearing down the tab must not leave a conference and four legs running.
+  const dismissNotice = useCallback(() => dispatch({ type: 'DISMISS_NOTICE' }), [])
+
+  // --- Transitions with side effects -----------------------------------------
+
+  // Every line finished: a manual call hands back the pad, a batch fans out
+  // again. A beat first, so the final state of each line is readable.
+  useEffect(() => {
+    if (settledAt == null || !sessionId) return
+    const timer = setTimeout(() => {
+      if (mode === 'manual') {
+        const line = selectLines(stateRef.current)[0]
+        dispatch({
+          type: 'RETURN_TO_READY',
+          notice: line ? `${line.companyName}: ${describeLine(line, Date.now()).label}` : null,
+        })
+      } else {
+        void startBatch(sessionId)
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [settledAt, mode, sessionId, startBatch])
+
+  useEffect(() => {
+    const previous = prevPhaseRef.current
+    prevPhaseRef.current = phase
+    if (phase === 'live' && previous !== 'live') playCue('connect')
+    if (phase === 'wrapup' && previous !== 'wrapup' && state.wrap?.endedBy === 'prospect') {
+      playCue('hangup')
+    }
+  }, [phase, state.wrap])
+
+  const noticeId = state.notice?.id
+  const noticeTone = state.notice?.tone
+  useEffect(() => {
+    if (noticeId == null) return
+    if (noticeId !== prevNoticeRef.current) {
+      prevNoticeRef.current = noticeId
+      if (noticeTone === 'warn') playCue('voicemail')
+    }
+    if (noticeTone === 'bad') return
+    const timer = setTimeout(() => dispatch({ type: 'DISMISS_NOTICE', id: noticeId }), 7000)
+    return () => clearTimeout(timer)
+  }, [noticeId, noticeTone])
+
+  // The tab title is the only thing visible while the agent is in another
+  // window, which is exactly when a hang-up gets missed.
+  useEffect(() => {
+    const base = 'RecruitingLine'
+    const live = selectLiveLine(state)
+    let title = base
+    if (state.phase === 'live' && live) title = `● Live · ${live.companyName}`
+    else if (state.phase === 'wrapup') title = state.wrap?.endedBy === 'prospect' ? 'Prospect hung up' : 'Call ended'
+    else if (state.phase === 'dialing') title = 'Dialing…'
+    document.title = title === base ? base : `${title} · ${base}`
+  }, [state])
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      const current = stateRef.current
+      if (current.phase === 'wrapup') return
+      const key = event.key.toLowerCase()
+      if (key === 'm' && connectionRef.current) {
+        event.preventDefault()
+        toggleMute()
+      } else if (key === 'h' && current.phase === 'live') {
+        event.preventDefault()
+        void hangUp()
+      } else if (key === 's' && current.phase === 'dialing') {
+        event.preventDefault()
+        void skipBatch()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleMute, hangUp, skipBatch])
+
+  // Closing the tab mid-call would drop a live prospect with no warning.
+  useEffect(() => {
+    if (phase !== 'live' && phase !== 'dialing') return
+    const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [phase])
+
   useEffect(() => {
     return () => {
+      endingRef.current = true
       connectionRef.current?.disconnect()
       deviceRef.current?.destroy()
+      document.title = 'RecruitingLine'
     }
   }, [])
 
+  const lines = useMemo(() => selectLines(state), [state])
+  const liveLine = useMemo(() => selectLiveLine(state), [state])
+  const stats = useMemo(() => selectStats(state), [state])
+
   return {
     phase,
+    mode,
+    batchNumber: state.batchNumber,
     lines,
-    liveCall,
-    wrapCall,
-    error,
-    muted,
+    liveLine,
+    wrap: state.wrap,
+    notice: state.notice,
+    error: state.error,
     stats,
+    agent,
+    sync,
+    levelsRef,
     start,
     manualDial,
-    sendDigits,
+    resumeQueue,
     end,
     hangUp,
+    skipBatch,
     toggleMute,
+    sendDigits,
     finishWrapup,
-    skipBatch: useCallback(async () => {
-      await Promise.all(
-        lines
-          .filter((l) => l.status === 'dialing' || l.status === 'ringing')
-          .map((l) => postJson(`/api/calls/${l.callId}/hangup`).catch(() => undefined)),
-      )
-    }, [lines]),
+    dismissNotice,
   }
 }

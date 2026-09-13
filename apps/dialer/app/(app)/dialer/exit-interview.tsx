@@ -7,6 +7,7 @@ import { CALL_OUTCOMES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import type { CallOutcome } from '@/types/db'
 import type { Line } from './use-dialer'
+import { formatClock } from './dialer-machine'
 
 const TONE_RING = {
   good: 'border-good text-good bg-good-bg',
@@ -32,9 +33,16 @@ function defaultFollowUp(): string {
  */
 export function ExitInterview({
   call,
+  endedBy,
+  talkSeconds,
+  saveLabel = 'Save and dial next',
   onDone,
 }: {
   call: Line
+  /** Shown first: "they hung up on me" changes what goes in the notes. */
+  endedBy?: 'you' | 'prospect'
+  talkSeconds?: number | null
+  saveLabel?: string
   onDone: () => void
 }) {
   const [outcome, setOutcome] = useState<CallOutcome | null>(null)
@@ -107,8 +115,18 @@ export function ExitInterview({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
       <div className="w-full max-w-md rounded-lg border border-border-subtle bg-background shadow-xl">
-        <div className="border-b border-border-subtle px-5 py-3.5">
-          <p className="text-xs text-muted">Call ended</p>
+        <div
+          className={cn(
+            'rounded-t-lg border-b px-5 py-3.5',
+            endedBy === 'prospect' ? 'border-bad-bg bg-bad-bg' : 'border-border-subtle',
+          )}
+        >
+          <p className={cn('text-xs font-semibold', endedBy === 'prospect' ? 'text-bad' : 'text-muted')}>
+            {endedBy === 'prospect' ? 'Prospect hung up' : endedBy === 'you' ? 'You hung up' : 'Call ended'}
+            {talkSeconds != null && (
+              <span className="tnum font-normal"> · talked {formatClock(talkSeconds)}</span>
+            )}
+          </p>
           <h2 className="text-base font-semibold">{call.companyName}</h2>
         </div>
 
@@ -190,7 +208,7 @@ export function ExitInterview({
             disabled={!outcome || saving}
             className="h-9"
           >
-            {saving ? 'Saving…' : 'Save and dial next'}
+            {saving ? 'Saving…' : saveLabel}
           </Button>
         </div>
       </div>

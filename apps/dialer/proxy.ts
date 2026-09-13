@@ -50,7 +50,7 @@ export async function proxy(request: NextRequest) {
 
   if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
-    url.pathname = '/crm'
+    url.pathname = '/leads'
     url.search = ''
     return NextResponse.redirect(url)
   }
@@ -61,10 +61,16 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except static assets and the Twilio webhook surface.
+     * Everything except static assets, the Twilio webhook surface, and the
+     * dialer's session API.
+     *
      * Webhooks must never be redirected to /login -- Twilio would see a 307
-     * and mark the call failed.
+     * and mark the call failed. The session routes are excluded for cost, not
+     * correctness: each one calls getUser() and checks that the session
+     * belongs to the caller, so running them through here only adds a second
+     * auth round-trip -- and the dialer polls one of them every 1.5 seconds
+     * while lines are out.
      */
-    '/((?!_next/static|_next/image|favicon.ico|api/twilio|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/twilio|api/session|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
