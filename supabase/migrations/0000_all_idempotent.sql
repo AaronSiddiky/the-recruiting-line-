@@ -303,7 +303,6 @@ begin
       from companies c
      where c.do_not_call = false
        and c.phone is not null
-       and (c.owner_id = p_agent or c.owner_id is null)
        and (c.next_follow_up is null or c.next_follow_up <= current_date)
        and (c.response is null or c.response = 'call_back')
        -- not already dialed in this session
@@ -381,7 +380,7 @@ create policy companies_insert on companies
 drop policy if exists companies_update on companies;
 create policy companies_update on companies
   for update to authenticated
-  using (owner_id is null or owner_id = auth.uid() or public.is_privileged());
+  using (true) with check (true);
 drop policy if exists companies_delete on companies;
 create policy companies_delete on companies
   for delete to authenticated using (public.is_privileged());

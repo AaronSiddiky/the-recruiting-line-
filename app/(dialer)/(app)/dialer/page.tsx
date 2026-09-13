@@ -17,7 +17,6 @@ export default async function DialerPage() {
     .from('companies')
     .select('id', { count: 'exact', head: true })
     .eq('do_not_call', false)
-    .or(`owner_id.eq.${user.id},owner_id.is.null`)
     .or(`next_follow_up.is.null,next_follow_up.lte.${today}`)
     .or('response.is.null,response.eq.call_back')
 
