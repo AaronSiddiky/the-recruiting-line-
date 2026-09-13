@@ -1,0 +1,19 @@
+{
+  "name": "recruitingline",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:web": "npm run dev -w @recruitingline/web",
+    "dev:dialer": "npm run dev -w @recruitingline/dialer",
+    "build": "npm run build --workspaces",
+    "build:web": "npm run build -w @recruitingline/web",
+    "build:dialer": "npm run build -w @recruitingline/dialer",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.9"
+  }
+}

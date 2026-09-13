@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "../page.module.css";
+import { site } from "../site";
 
 const LINKS = [
   { href: "#sourcing", label: "Sourcing" },
@@ -39,7 +40,7 @@ export default function Nav() {
         ))}
       </div>
       <div className={styles.navRight}>
-        <a href="mailto:contact@therecruitingline.com" className={`${styles.navLink} ${styles.navLogin}`}>
+        <a href={site.dialerLoginUrl} className={`${styles.navLink} ${styles.navLogin}`}>
           Login
         </a>
         <a href="#start" className={styles.navCta}>
@@ -63,7 +64,7 @@ export default function Nav() {
               {l.label}
             </a>
           ))}
-          <a href="mailto:contact@therecruitingline.com" onClick={() => setOpen(false)}>
+          <a href={site.dialerLoginUrl} onClick={() => setOpen(false)}>
             Login
           </a>
           <a href="#start" className={styles.mobileMenuCta} onClick={() => setOpen(false)}>

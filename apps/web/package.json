@@ -1,14 +1,14 @@
 {
-  "name": "recruiting",
+  "name": "@recruitingline/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-http-header-size=81920' next dev",
+    "dev": "NODE_OPTIONS='--max-http-header-size=81920' next dev --port 3000",
     "build": "next build",
-    "start": "next start"
+    "start": "next start --port 3000"
   },
   "dependencies": {
-    "next": "16.3.3",
+    "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

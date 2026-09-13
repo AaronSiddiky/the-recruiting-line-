@@ -1,11 +1,11 @@
 {
-  "name": "recruiting-line",
+  "name": "@recruitingline/dialer",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS=--max-http-header-size=32768 next dev",
+    "dev": "NODE_OPTIONS=--max-http-header-size=32768 next dev --port 3001",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --port 3001",
     "lint": "eslint"
   },
   "dependencies": {

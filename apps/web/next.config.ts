@@ -1,9 +1,11 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // ~/code contains a stray package.json, so pin the root to this project
+  // npm workspaces hoist dependencies to the monorepo root, so Turbopack's
+  // root has to be the repo root for it to resolve them.
   turbopack: {
-    root: __dirname,
+    root: path.join(__dirname, "../.."),
   },
   images: {
     formats: ["image/avif", "image/webp"],
