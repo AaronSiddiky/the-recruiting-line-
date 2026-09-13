@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const BASE = 47000;
+const BASE = 7500;
 const PER_SECOND = 1000 / (24 * 60 * 60); // $1,000 per open-seat day
 const SPEEDUP = 60; // accelerated 60x so movement is visible
 

@@ -1,4 +1,6 @@
 import Ticker from "./Ticker";
+import LeadForm from "./LeadForm";
+import { site, phoneHref } from "./site";
 
 export default function Home() {
   return (
@@ -151,7 +153,17 @@ export default function Home() {
                 The only line you ever pay, and only once he has proven out.
               </span>
             </span>
-            <span className="due pay">$12,500</span>
+            <span className="due pay">$7,500</span>
+          </div>
+          <div className="inv-line">
+            <span className="what">
+              <b>We miss the 7-day candidate deadline</b>
+              <span className="fine">
+                No vetted candidates on your desk by day 7 and the miss is on
+                us. Search continues, and you get paid for the wait.
+              </span>
+            </span>
+            <span className="due credit">we pay you $500</span>
           </div>
           <div className="inv-line">
             <span className="what">
@@ -170,6 +182,27 @@ export default function Home() {
             <a className="btn btn-primary" href="#start">
               Open a work order
             </a>
+          </div>
+        </div>
+
+        <div className="math">
+          <span className="eyebrow">Do the math on a $70k tech</span>
+          <div className="math-grid">
+            <div className="math-col">
+              <div className="math-lab">Contingency firm, 20&ndash;25% of salary</div>
+              <div className="math-num">$14,000&ndash;$17,500</div>
+              <div className="math-fine">Unvetted resumes. No guarantee. Due on start date.</div>
+            </div>
+            <div className="math-col hot">
+              <div className="math-lab">The Recruiting Line</div>
+              <div className="math-num">$7,500</div>
+              <div className="math-fine">Vetted, 30-day replacement, due only after day 30.</div>
+            </div>
+            <div className="math-col">
+              <div className="math-lab">Payback on a filled truck</div>
+              <div className="math-num">7.5 days</div>
+              <div className="math-fine">At $1,000 a day of billable revenue the seat was losing.</div>
+            </div>
           </div>
         </div>
       </section>
@@ -277,12 +310,20 @@ export default function Home() {
             What did the empty seat cost you <em>today?</em>
           </h2>
           <p className="lede">
-            A 15-minute call opens the search. You pay nothing until a tech you
-            chose has already worked a month.
+            Tell us the seat. We call you within one business hour, and you pay
+            nothing until a tech you chose has already worked a month.
           </p>
-          <a className="btn btn-primary" href="mailto:leonard@therecruitingline.com">
-            Start a search
-          </a>
+          <LeadForm />
+          <p className="final-alt">
+            Rather talk now?{" "}
+            {site.phone && (
+              <>
+                Call or text <a href={phoneHref(site.phone)}>{site.phone}</a>
+                {" "}or{" "}
+              </>
+            )}
+            email <a href={"mailto:" + site.email}>{site.email}</a>.
+          </p>
         </div>
       </section>
 
