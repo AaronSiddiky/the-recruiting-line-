@@ -200,7 +200,7 @@ export function ExitInterview({
 
         <div className="flex items-center justify-between border-t border-border-subtle px-5 py-3">
           <span className="text-xs text-muted-2">
-            {outcome ? 'Press \u2318\u21A9 to save' : 'Press 1\u20134 to pick an outcome'}
+            {outcome ? 'Press \u2318\u21A9 to save' : 'Press 1\u20135 to pick an outcome'}
           </span>
           <Button
             variant="primary"

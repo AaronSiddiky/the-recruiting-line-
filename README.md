@@ -6,7 +6,7 @@ internal dialer/CRM, served from the same domain.
 | Area | Routes | Code |
 |------|--------|------|
 | Marketing site | `/`, `/api/lead` | `app/(site)` |
-| Dialer / CRM (sign-in required) | `/login`, `/leads`, `/crm`, `/dialer`, `/companies/[id]`, `/lead-list` | `app/(dialer)`, `components/`, `lib/`, `types/` |
+| Dialer / CRM (sign-in required) | `/login`, `/leads`, `/crm`, `/dialer`, `/stats`, `/companies/[id]`, `/lead-list` | `app/(dialer)`, `components/`, `lib/`, `types/` |
 | Dialer APIs | `/api/session/*`, `/api/calls/*`, `/api/recordings/*`, `/api/twilio/*` | `app/api` |
 | Database | Supabase migrations | `supabase/migrations` |
 

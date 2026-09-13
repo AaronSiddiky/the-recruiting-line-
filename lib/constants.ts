@@ -37,6 +37,13 @@ export const CALL_OUTCOMES: {
     key: '4',
     tone: 'neutral',
   },
+  {
+    value: 'customer',
+    label: 'Became a customer',
+    hint: 'They signed — counts toward customers on the stats page',
+    key: '5',
+    tone: 'good',
+  },
 ]
 
 export const OUTCOME_LABELS: Record<CallOutcome, string> = Object.fromEntries(
@@ -106,3 +113,4 @@ export const STATE_TIMEZONES: Record<string, string> = {
   VA: 'America/New_York',  VT: 'America/New_York',   WA: 'America/Los_Angeles',
   WI: 'America/Chicago',   WV: 'America/New_York',   WY: 'America/Denver',
 }
+

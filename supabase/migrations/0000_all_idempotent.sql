@@ -17,10 +17,12 @@ do $$ begin
       'meeting_booked',
       'not_interested',
       'wrong_number',
-      'call_back'
+      'call_back',
+      'customer'
     );
   end if;
 end $$;
+alter type call_outcome add value if not exists 'customer';
 
 -- Machine-recorded result of a dial. Distinct from the human outcome: a call
 -- can be `connected` and still have no outcome (agent skipped the interview).

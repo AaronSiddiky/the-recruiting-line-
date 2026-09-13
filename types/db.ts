@@ -6,6 +6,7 @@ export type CallOutcome =
   | 'not_interested'
   | 'wrong_number'
   | 'call_back'
+  | 'customer'
 
 export type CallStatus =
   | 'dialing'

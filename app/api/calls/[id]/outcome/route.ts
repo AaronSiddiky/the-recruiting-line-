@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 
 const bodySchema = z.object({
-  outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back']),
+  outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer']),
   notes: z.string().max(10_000).optional(),
   nextFollowUp: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 })

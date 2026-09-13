@@ -36,6 +36,7 @@ const OUTCOME_TONE: Record<CallOutcome, keyof typeof TONE> = {
   call_back: 'warn',
   not_interested: 'bad',
   wrong_number: 'neutral',
+  customer: 'good',
 }
 
 export function OutcomeBadge({ outcome }: { outcome: CallOutcome | null }) {
