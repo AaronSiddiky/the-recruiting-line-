@@ -69,13 +69,20 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient()
   const path = `${user.id}.${ext}`
+  const bytes = Buffer.from(await file.arrayBuffer())
+  const options = { contentType: file.type, upsert: true }
 
-  const { error: uploadError } = await admin.storage
-    .from(BUCKET)
-    .upload(path, Buffer.from(await file.arrayBuffer()), {
-      contentType: file.type,
-      upsert: true,
-    })
+  let { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, options)
+
+  // The bucket is normally created by migration 0010, but the service role can
+  // make it on the spot, so a missing bucket is not worth a support round-trip.
+  if (uploadError && /bucket not found/i.test(uploadError.message)) {
+    const { error: createError } = await admin.storage.createBucket(BUCKET, { public: false })
+    if (createError && !/already exists/i.test(createError.message)) {
+      return NextResponse.json({ error: createError.message }, { status: 500 })
+    }
+    ;({ error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, options))
+  }
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 })
   }
@@ -90,7 +97,20 @@ export async function POST(request: NextRequest) {
     await admin.storage.from(BUCKET).remove([profile.voicemail_path]).catch(() => undefined)
   }
 
-  await admin.from('profiles').update({ voicemail_path: path }).eq('id', user.id)
+  const { error: profileError } = await admin
+    .from('profiles')
+    .update({ voicemail_path: path })
+    .eq('id', user.id)
+  if (profileError) {
+    return NextResponse.json(
+      {
+        error: /voicemail_path/.test(profileError.message)
+          ? 'Saved the file, but the database is missing the voicemail column. Run supabase/migrations/0010_voicemail_drop.sql.'
+          : profileError.message,
+      },
+      { status: 500 },
+    )
+  }
   return NextResponse.json({ ok: true })
 }
 
