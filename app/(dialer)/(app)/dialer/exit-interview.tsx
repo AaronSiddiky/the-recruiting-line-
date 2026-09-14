@@ -22,6 +22,12 @@ function daysFromNow(days: number): string {
   return date.toISOString().slice(0, 10)
 }
 
+function monthFromNow(): string {
+  const date = new Date()
+  date.setMonth(date.getMonth() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
 function defaultFollowUp(): string {
   return daysFromNow(3)
 }
@@ -72,7 +78,13 @@ export function ExitInterview({
           outcome,
           notes: notes.trim() || undefined,
           nextFollowUp:
-            outcome === 'call_back' ? followUp : outcome === 'no_answer' ? daysFromNow(1) : null,
+            outcome === 'call_back'
+              ? followUp
+              : outcome === 'no_answer'
+                ? daysFromNow(1)
+                : outcome === 'not_interested'
+                  ? monthFromNow()
+                  : null,
           email: email.trim() || undefined,
         }),
       })
@@ -174,6 +186,12 @@ export function ExitInterview({
           {outcome === 'no_answer' && (
             <p className="text-xs text-muted">
               They go back in the queue for tomorrow. Pick “Call back” instead to choose the day.
+            </p>
+          )}
+
+          {outcome === 'not_interested' && (
+            <p className="text-xs text-muted">
+              Not now isn’t never: they come back in the queue in one month.
             </p>
           )}
 

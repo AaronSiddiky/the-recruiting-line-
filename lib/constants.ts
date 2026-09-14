@@ -33,7 +33,7 @@ export const CALL_OUTCOMES: {
   {
     value: 'not_interested',
     label: 'Not interested',
-    hint: 'Removes them from the dial queue',
+    hint: 'Comes back around in a month',
     key: '4',
     tone: 'bad',
   },

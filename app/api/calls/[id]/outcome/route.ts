@@ -57,7 +57,9 @@ export async function POST(
   if (outcome === 'call_back' && nextFollowUp) companyPatch.next_follow_up = nextFollowUp
   // "No answer" always comes back tomorrow. The browser sends its local
   // tomorrow; fall back to UTC so the lead never lands in the queue undated.
-  if (outcome === 'no_answer') companyPatch.next_follow_up = nextFollowUp ?? tomorrowUtc()
+  if (outcome === 'no_answer') companyPatch.next_follow_up = nextFollowUp ?? daysFromNowUtc(1)
+  // "Not interested" is a snooze, not a burial: back in the queue in a month.
+  if (outcome === 'not_interested') companyPatch.next_follow_up = nextFollowUp ?? daysFromNowUtc(30)
   if (email) companyPatch.email = email
   if (Object.keys(companyPatch).length > 0) {
     await supabase.from('companies').update(companyPatch).eq('id', call.company_id)
@@ -66,8 +68,8 @@ export async function POST(
   return NextResponse.json({ ok: true })
 }
 
-function tomorrowUtc() {
+function daysFromNowUtc(days: number) {
   const d = new Date()
-  d.setUTCDate(d.getUTCDate() + 1)
+  d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
 }
