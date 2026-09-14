@@ -16,10 +16,14 @@ const TONE_RING = {
   neutral: 'border-border-strong text-foreground bg-surface-2',
 } as const
 
-function defaultFollowUp(): string {
+function daysFromNow(days: number): string {
   const date = new Date()
-  date.setDate(date.getDate() + 3)
+  date.setDate(date.getDate() + days)
   return date.toISOString().slice(0, 10)
+}
+
+function defaultFollowUp(): string {
+  return daysFromNow(3)
 }
 
 /**
@@ -36,6 +40,7 @@ export function ExitInterview({
   endedBy,
   talkSeconds,
   saveLabel = 'Save and dial next',
+  defaultOutcome = null,
   onDone,
 }: {
   call: Line
@@ -43,9 +48,11 @@ export function ExitInterview({
   endedBy?: 'you' | 'prospect'
   talkSeconds?: number | null
   saveLabel?: string
+  /** Pre-selected, e.g. "No answer" after a voicemail drop. */
+  defaultOutcome?: CallOutcome | null
   onDone: () => void
 }) {
-  const [outcome, setOutcome] = useState<CallOutcome | null>(null)
+  const [outcome, setOutcome] = useState<CallOutcome | null>(defaultOutcome)
   const [notes, setNotes] = useState('')
   const [email, setEmail] = useState('')
   const [followUp, setFollowUp] = useState(defaultFollowUp)
@@ -64,7 +71,8 @@ export function ExitInterview({
         body: JSON.stringify({
           outcome,
           notes: notes.trim() || undefined,
-          nextFollowUp: outcome === 'call_back' ? followUp : null,
+          nextFollowUp:
+            outcome === 'call_back' ? followUp : outcome === 'no_answer' ? daysFromNow(1) : null,
           email: email.trim() || undefined,
         }),
       })
@@ -163,6 +171,12 @@ export function ExitInterview({
             </div>
           </fieldset>
 
+          {outcome === 'no_answer' && (
+            <p className="text-xs text-muted">
+              They go back in the queue for tomorrow. Pick “Call back” instead to choose the day.
+            </p>
+          )}
+
           {outcome === 'call_back' && (
             <label className="flex items-center justify-between gap-3">
               <span className="text-xs font-medium text-muted">Call back on</span>
@@ -217,7 +231,7 @@ export function ExitInterview({
 
         <div className="flex items-center justify-between border-t border-border-subtle px-5 py-3">
           <span className="text-xs text-muted-2">
-            {outcome ? 'Press \u2318\u21A9 to save' : 'Press 1\u20135 to pick an outcome'}
+            {outcome ? 'Press \u2318\u21A9 to save' : 'Press 1\u20136 to pick an outcome'}
           </span>
           <Button
             variant="primary"

@@ -22,7 +22,7 @@ const SummarySchema = z.object({
     .array(z.string())
     .describe('Anything either side agreed to do. Empty if none.'),
   suggested_outcome: z
-    .enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer'])
+    .enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer', 'no_answer'])
     .nullable()
     .describe('Which disposition the transcript supports, or null if genuinely unclear.'),
   next_step: z

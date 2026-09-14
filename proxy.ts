@@ -80,5 +80,6 @@ export const config = {
     '/lead-list/:path*',
     '/api/calls/:path*',
     '/api/recordings/:path*',
+    '/api/voicemail/:path*',
   ],
 }

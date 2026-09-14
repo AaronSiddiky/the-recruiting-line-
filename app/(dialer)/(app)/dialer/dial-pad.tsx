@@ -75,6 +75,23 @@ export function DialPad({
     return () => window.removeEventListener('keydown', onKey)
   }, [press, submit, mode])
 
+  // Paste a number copied from anywhere: punctuation and spaces are stripped
+  // so "(480) 555-0123" and "+1 480.555.0123" both land as digits.
+  useEffect(() => {
+    if (mode !== 'compose') return
+    function onPaste(event: ClipboardEvent) {
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      const text = event.clipboardData?.getData('text') ?? ''
+      const cleaned = text.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '').slice(0, 20)
+      if (!cleaned) return
+      event.preventDefault()
+      setValue(cleaned)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [mode])
+
   const parsed = toE164(value)
   const composing = mode === 'compose'
 
@@ -149,6 +166,12 @@ export function DialPad({
           <Phone className="size-4" aria-hidden />
           {busy ? 'Dialing…' : parsed ? `Call ${formatPhone(parsed)}` : 'Call'}
         </button>
+      )}
+
+      {composing && !value && (
+        <p className="mt-2 text-center text-[11px] text-muted-2">
+          Type it, or paste a copied number (⌘V / Ctrl+V)
+        </p>
       )}
     </div>
   )

@@ -7,6 +7,7 @@ export type CallOutcome =
   | 'wrong_number'
   | 'call_back'
   | 'customer'
+  | 'no_answer'
 
 export type CallStatus =
   | 'dialing'
@@ -37,6 +38,8 @@ export type Profile = {
   full_name: string
   email: string | null
   role: UserRole
+  /** Storage path of the rep's pre-recorded voicemail message, if any. */
+  voicemail_path: string | null
   created_at: string
 }
 
@@ -101,6 +104,8 @@ export type Call = {
   recording_sid: string | null
   recording_path: string | null
   recording_duration: number | null
+  /** Set when the rep dropped their pre-recorded message into this call. */
+  voicemail_left_at: string | null
   transcript: string | null
   ai_summary: AiSummary | null
   ai_status: AiStatus

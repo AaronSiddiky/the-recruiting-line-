@@ -276,6 +276,24 @@ export function useDialer() {
     if (id) void refresh(id)
   }, [refresh])
 
+  const voicemailLeftRef = useRef<Set<string>>(new Set())
+
+  /** Play the rep's pre-recorded message into the live call and hang up. */
+  const leaveVoicemail = useCallback(async () => {
+    const { liveCallId, sessionId: id } = stateRef.current
+    if (!liveCallId) return
+    try {
+      await postJson(`/api/calls/${liveCallId}/voicemail`)
+      voicemailLeftRef.current.add(liveCallId)
+      dispatch({ type: 'AGENT_HANGUP', callId: liveCallId })
+      if (id) void refresh(id)
+    } catch (e) {
+      dispatch({ type: 'ERROR', message: e instanceof Error ? e.message : 'Could not leave the voicemail.' })
+    }
+  }, [refresh])
+
+  const wasVoicemailLeft = useCallback((callId: string) => voicemailLeftRef.current.has(callId), [])
+
   const skipBatch = useCallback(async () => {
     const current = stateRef.current
     const out = selectLines(current).filter(
@@ -376,6 +394,9 @@ export function useDialer() {
       } else if (key === 'h' && current.phase === 'live') {
         event.preventDefault()
         void hangUp()
+      } else if (key === 'v' && current.phase === 'live') {
+        event.preventDefault()
+        void leaveVoicemail()
       } else if (key === 's' && current.phase === 'dialing') {
         event.preventDefault()
         void skipBatch()
@@ -383,7 +404,7 @@ export function useDialer() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleMute, hangUp, skipBatch])
+  }, [toggleMute, hangUp, skipBatch, leaveVoicemail])
 
   // Closing the tab mid-call would drop a live prospect with no warning.
   useEffect(() => {
@@ -424,6 +445,8 @@ export function useDialer() {
     resumeQueue,
     end,
     hangUp,
+    leaveVoicemail,
+    wasVoicemailLeft,
     skipBatch,
     toggleMute,
     sendDigits,

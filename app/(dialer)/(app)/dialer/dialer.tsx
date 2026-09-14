@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ExitInterview } from './exit-interview'
 import { DialPad } from './dial-pad'
+import { VoicemailSettings } from './voicemail-settings'
 import { useDialer, type AgentAudio, type AudioLevels } from './use-dialer'
 import {
   describeLine,
@@ -36,7 +37,7 @@ import {
 import { cn, formatPhone } from '@/lib/utils'
 import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
-export function Dialer({ queueSize }: { queueSize: number }) {
+export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoicemail: boolean }) {
   const d = useDialer()
   const running = d.phase !== 'idle'
   const now = useNow(d.phase === 'dialing' || d.phase === 'live')
@@ -107,6 +108,7 @@ export function Dialer({ queueSize }: { queueSize: number }) {
           <div className="flex flex-col items-center gap-8">
             <IdleState queueSize={queueSize} />
             {pad}
+            <VoicemailSettings hasVoicemail={hasVoicemail} />
           </div>
         )}
 
@@ -116,6 +118,7 @@ export function Dialer({ queueSize }: { queueSize: number }) {
           <div className="flex flex-col items-center gap-8">
             <ReadyState queueSize={queueSize} onResume={d.resumeQueue} />
             {pad}
+            <VoicemailSettings hasVoicemail={hasVoicemail} />
           </div>
         )}
 
@@ -148,6 +151,8 @@ export function Dialer({ queueSize }: { queueSize: number }) {
             now={now}
             onMute={d.toggleMute}
             onHangUp={() => void d.hangUp()}
+            onVoicemail={() => void d.leaveVoicemail()}
+            hasVoicemail={hasVoicemail}
             onDigit={d.sendDigits}
           />
         )}
@@ -170,6 +175,7 @@ export function Dialer({ queueSize }: { queueSize: number }) {
           endedBy={d.wrap.endedBy}
           talkSeconds={d.wrap.talkSeconds}
           saveLabel={d.mode === 'manual' ? 'Save' : 'Save and dial next'}
+          defaultOutcome={d.wasVoicemailLeft(d.wrap.callId) ? 'no_answer' : null}
           onDone={d.finishWrapup}
         />
       )}
@@ -594,6 +600,8 @@ function LiveCallPanel({
   now,
   onMute,
   onHangUp,
+  onVoicemail,
+  hasVoicemail,
   onDigit,
 }: {
   line: Line
@@ -603,6 +611,8 @@ function LiveCallPanel({
   now: number
   onMute: () => void
   onHangUp: () => void
+  onVoicemail: () => void
+  hasVoicemail: boolean
   onDigit: (digit: string) => void
 }) {
   const others = summarizeLines(lines.filter((l) => l.callId !== line.callId))
@@ -677,6 +687,18 @@ function LiveCallPanel({
                 {agent.muted ? <MicOff className="size-4" aria-hidden /> : <Mic className="size-4" aria-hidden />}
                 {agent.muted ? 'Unmute' : 'Mute'}
                 <Kbd>M</Kbd>
+              </button>
+
+              <button
+                type="button"
+                onClick={onVoicemail}
+                disabled={!hasVoicemail}
+                title={hasVoicemail ? 'Play your recorded message and hang up' : 'Record a voicemail message first, on the dialer home screen'}
+                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Voicemail className="size-4" aria-hidden />
+                Leave voicemail
+                <Kbd>V</Kbd>
               </button>
 
               <button

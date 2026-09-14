@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 
 const bodySchema = z.object({
-  outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer']),
+  outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer', 'no_answer']),
   notes: z.string().max(10_000).optional(),
   nextFollowUp: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   email: z.string().trim().email().max(200).optional(),
@@ -55,10 +55,19 @@ export async function POST(
   // prospect just read out: it lives on the company, not the call.
   const companyPatch: { next_follow_up?: string; email?: string } = {}
   if (outcome === 'call_back' && nextFollowUp) companyPatch.next_follow_up = nextFollowUp
+  // "No answer" always comes back tomorrow. The browser sends its local
+  // tomorrow; fall back to UTC so the lead never lands in the queue undated.
+  if (outcome === 'no_answer') companyPatch.next_follow_up = nextFollowUp ?? tomorrowUtc()
   if (email) companyPatch.email = email
   if (Object.keys(companyPatch).length > 0) {
     await supabase.from('companies').update(companyPatch).eq('id', call.company_id)
   }
 
   return NextResponse.json({ ok: true })
+}
+
+function tomorrowUtc() {
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
 }
