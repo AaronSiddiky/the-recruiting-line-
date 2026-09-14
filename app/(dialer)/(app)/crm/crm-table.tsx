@@ -3,9 +3,9 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { ArrowDown, ArrowUp, PhoneOff } from 'lucide-react'
+import { ArrowDown, ArrowUp, PhoneOff, Trash2 } from 'lucide-react'
 import { OutcomeBadge } from '@/components/ui/badge'
-import { updateCompany } from '@/lib/actions/companies'
+import { deleteCompany, updateCompany } from '@/lib/actions/companies'
 import { cn, formatPhone, relativeDate } from '@/lib/utils'
 import type { CompanyRow, Profile } from '@/types/db'
 
@@ -18,6 +18,7 @@ const COLUMNS = [
   { key: 'owner', label: 'Owner', sortable: false },
   { key: 'follow_up', label: 'Next follow-up', sortable: true },
   { key: 'notes', label: 'Notes', sortable: false },
+  { key: 'actions', label: '', sortable: false },
 ] as const
 
 export function CrmTable({
@@ -65,6 +66,18 @@ export function CrmTable({
         // snaps back to the truth instead of showing a lie.
         router.refresh()
       }
+    })
+  }
+
+  function remove(row: CompanyRow) {
+    const history = row.call_count
+      ? ` Its ${row.call_count} ${row.call_count === 1 ? 'call' : 'calls'}, notes and recordings go with it.`
+      : ''
+    if (!window.confirm(`Delete ${row.name} from the CRM?${history} This cannot be undone.`)) return
+    startTransition(async () => {
+      const res = await deleteCompany(row.id)
+      if (res.error) window.alert(res.error)
+      router.refresh()
     })
   }
 
@@ -196,6 +209,18 @@ export function CrmTable({
                     company={row}
                     onSave={(notes) => save(row.id, { notes })}
                   />
+                </td>
+
+                <td className="border-b border-border-subtle px-2 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => remove(row)}
+                    title={`Delete ${row.name}`}
+                    aria-label={`Delete ${row.name}`}
+                    className="cursor-pointer rounded p-1 text-muted-2 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bad-bg hover:text-bad focus:opacity-100"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
                 </td>
               </tr>
             ))}

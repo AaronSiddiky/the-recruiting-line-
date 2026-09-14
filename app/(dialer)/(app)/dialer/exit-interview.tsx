@@ -47,6 +47,7 @@ export function ExitInterview({
 }) {
   const [outcome, setOutcome] = useState<CallOutcome | null>(null)
   const [notes, setNotes] = useState('')
+  const [email, setEmail] = useState('')
   const [followUp, setFollowUp] = useState(defaultFollowUp)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +65,7 @@ export function ExitInterview({
           outcome,
           notes: notes.trim() || undefined,
           nextFollowUp: outcome === 'call_back' ? followUp : null,
+          email: email.trim() || undefined,
         }),
       })
 
@@ -105,7 +107,7 @@ export function ExitInterview({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outcome, notes, followUp, saving])
+  }, [outcome, notes, followUp, email, saving])
 
   return (
     <div
@@ -182,6 +184,21 @@ export function ExitInterview({
               autoFocus
               placeholder="Who you spoke to, what they said, anything worth knowing next time."
               className="w-full resize-y rounded-md border border-border-strong p-2 text-sm focus:outline-2 focus:outline-accent"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted">
+              Email
+              <span className="ml-1.5 font-normal text-muted-2">if they gave you one</span>
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="owner@company.com"
+              autoComplete="off"
+              className="h-8 w-full rounded-md border border-border-strong px-2 text-sm focus:outline-2 focus:outline-accent"
             />
           </label>
 

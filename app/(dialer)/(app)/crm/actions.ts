@@ -79,6 +79,7 @@ export async function importCompanies(
       phone,
       notes: record.notes || '',
       source: record.source || null,
+      email: record.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email) ? record.email : null,
       timezone: timezoneForState(state),
       owner_id: user.id,
     })

@@ -16,6 +16,7 @@ const patchSchema = z.object({
   state: z.string().length(2).nullable().optional(),
   source: z.string().trim().max(100).nullable().optional(),
   reached_out: z.boolean().optional(),
+  email: z.string().trim().email().max(200).nullable().optional(),
 })
 
 /**
@@ -42,5 +43,25 @@ export async function updateCompany(id: string, patch: unknown) {
   revalidatePath('/crm')
   revalidatePath('/leads')
   revalidatePath(`/companies/${id}`)
+  return { error: null }
+}
+
+/**
+ * Remove a company and, by cascade, its calls. RLS decides who may; a refused
+ * delete removes zero rows rather than erroring, so we check the count and
+ * say so instead of pretending it worked.
+ */
+export async function deleteCompany(id: string) {
+  if (!z.string().uuid().safeParse(id).success) return { error: 'Invalid company.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('companies').delete().eq('id', id).select('id')
+  if (error) return { error: error.message }
+  if (!data?.length) {
+    return { error: 'Not allowed to delete this company. Run migration 0008 if deletes should be open to every rep.' }
+  }
+
+  revalidatePath('/crm')
+  revalidatePath('/leads')
   return { error: null }
 }

@@ -56,6 +56,20 @@ export function CompanyHeaderFields({
         />
       </label>
 
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted">Email</span>
+        <input
+          type="email"
+          defaultValue={company.email ?? ''}
+          placeholder="owner@company.com"
+          onBlur={(e) => {
+            const v = e.target.value.trim()
+            if (v !== (company.email ?? '')) save({ email: v || null })
+          }}
+          className={fieldClass}
+        />
+      </label>
+
       <label className="flex cursor-pointer flex-col gap-1">
         <span className="text-xs font-medium text-muted">Dialable</span>
         <span className="flex h-8 items-center gap-2 rounded-md border border-border-strong px-2 text-sm">

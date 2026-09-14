@@ -6,6 +6,7 @@ const bodySchema = z.object({
   outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer']),
   notes: z.string().max(10_000).optional(),
   nextFollowUp: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  email: z.string().trim().email().max(200).optional(),
 })
 
 /**
@@ -32,7 +33,7 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid exit interview.' }, { status: 400 })
   }
 
-  const { outcome, notes, nextFollowUp } = parsed.data
+  const { outcome, notes, nextFollowUp, email } = parsed.data
 
   // RLS restricts this to the agent who made the call.
   const { data: call, error } = await supabase
@@ -50,12 +51,13 @@ export async function POST(
   }
 
   // "Call back" without a date is how leads quietly fall out of a pipeline, so
-  // the follow-up write is part of the same submission.
-  if (outcome === 'call_back' && nextFollowUp) {
-    await supabase
-      .from('companies')
-      .update({ next_follow_up: nextFollowUp })
-      .eq('id', call.company_id)
+  // the follow-up write is part of the same submission. Same for an email the
+  // prospect just read out: it lives on the company, not the call.
+  const companyPatch: { next_follow_up?: string; email?: string } = {}
+  if (outcome === 'call_back' && nextFollowUp) companyPatch.next_follow_up = nextFollowUp
+  if (email) companyPatch.email = email
+  if (Object.keys(companyPatch).length > 0) {
+    await supabase.from('companies').update(companyPatch).eq('id', call.company_id)
   }
 
   return NextResponse.json({ ok: true })

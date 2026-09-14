@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, MapPin, Phone } from 'lucide-react'
+import { ArrowLeft, Mail, MapPin, Phone } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { OutcomeBadge } from '@/components/ui/badge'
 import { formatPhone } from '@/lib/utils'
 import { CompanyHeaderFields } from './header-fields'
 import { CallHistory } from './call-history'
+import { DeleteCompanyButton } from './delete-button'
 import type { Call, CompanyRow, Profile } from '@/types/db'
 
 export default async function CompanyPage(props: PageProps<'/companies/[id]'>) {
@@ -59,11 +60,18 @@ export default async function CompanyPage(props: PageProps<'/companies/[id]'>) {
               <Phone className="size-3.5" aria-hidden />
               {formatPhone(row.phone)}
             </span>
+            {row.email && (
+              <a href={`mailto:${row.email}`} className="inline-flex items-center gap-1 hover:text-foreground">
+                <Mail className="size-3.5" aria-hidden />
+                {row.email}
+              </a>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <OutcomeBadge outcome={row.response} />
+          <DeleteCompanyButton id={row.id} name={row.name} callCount={row.call_count} />
         </div>
       </div>
 

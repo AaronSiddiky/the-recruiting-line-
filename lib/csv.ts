@@ -69,6 +69,9 @@ const HEADER_ALIASES: Record<string, string> = {
   leadsource: 'source',
   channel: 'source',
   note: 'notes',
+  email: 'email',
+  emailaddress: 'email',
+  contactemail: 'email',
 }
 
 export function normalizeHeader(header: string): string | null {

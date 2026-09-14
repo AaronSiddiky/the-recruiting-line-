@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import Link from 'next/link'
 import {
-  Keyboard,
   Loader2,
   Mic,
   MicOff,
@@ -606,7 +605,6 @@ function LiveCallPanel({
   onHangUp: () => void
   onDigit: (digit: string) => void
 }) {
-  const [keypad, setKeypad] = useState(false)
   const others = summarizeLines(lines.filter((l) => l.callId !== line.callId))
   const showPhone = formatPhone(line.phone) !== line.companyName
 
@@ -683,19 +681,6 @@ function LiveCallPanel({
 
               <button
                 type="button"
-                onClick={() => setKeypad((open) => !open)}
-                aria-pressed={keypad}
-                className={cn(
-                  'inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 text-sm font-semibold transition-colors',
-                  keypad ? 'border-accent text-accent' : 'border-border-strong hover:bg-surface-2',
-                )}
-              >
-                <Keyboard className="size-4" aria-hidden />
-                Keypad
-              </button>
-
-              <button
-                type="button"
                 onClick={onHangUp}
                 className="inline-flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-bad text-sm font-semibold text-white transition-opacity hover:opacity-90"
               >
@@ -719,7 +704,8 @@ function LiveCallPanel({
         </div>
       </section>
 
-      {keypad && <DialPad mode="dtmf" busy={false} onDial={() => undefined} onDigit={onDigit} />}
+      {/* Always open: reps hit phone trees on most connects, and a toggle was one more click while someone waits. */}
+      <DialPad mode="dtmf" busy={false} onDial={() => undefined} onDigit={onDigit} />
     </div>
   )
 }

@@ -49,7 +49,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
 
         <div className="flex flex-col gap-3 p-4">
           <p className="text-xs text-muted">
-            Needs a company name column and a phone column; city, state, source and notes
+            Needs a company name column and a phone column; city, state, source, email and notes
             are optional. Rows are matched on phone number, so re-importing a
             list updates the existing companies instead of duplicating them.
           </p>
