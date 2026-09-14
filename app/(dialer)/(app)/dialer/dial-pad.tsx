@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Delete, Phone } from 'lucide-react'
 import { cn, formatPhone, toE164 } from '@/lib/utils'
 
@@ -33,6 +33,11 @@ export function DialPad({
 }) {
   const [value, setValue] = useState('')
   const [sent, setSent] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  /** Keep only what a phone accepts: digits, one leading +, * and #. */
+  const clean = (text: string) =>
+    text.replace(/[^\d+*#]/g, '').replace(/(?!^)\+/g, '').slice(0, 20)
 
   const press = useCallback(
     (key: string) => {
@@ -82,11 +87,11 @@ export function DialPad({
     function onPaste(event: ClipboardEvent) {
       const target = event.target as HTMLElement | null
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
-      const text = event.clipboardData?.getData('text') ?? ''
-      const cleaned = text.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '').slice(0, 20)
+      const cleaned = clean(event.clipboardData?.getData('text') ?? '')
       if (!cleaned) return
       event.preventDefault()
       setValue(cleaned)
+      inputRef.current?.focus()
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
@@ -107,16 +112,29 @@ export function DialPad({
       </div>
 
       <div className="mb-3 flex h-11 items-center rounded-md border border-border-strong px-3">
-        <span
-          className={cn(
-            'tnum flex-1 truncate text-lg',
-            !composing && 'text-muted',
-            composing && !value && 'text-muted-2',
-          )}
-          aria-live="polite"
-        >
-          {composing ? value || 'Enter a number' : sent || 'Tones send to the call'}
-        </span>
+        {composing ? (
+          <input
+            ref={inputRef}
+            type="tel"
+            inputMode="tel"
+            value={value}
+            onChange={(e) => setValue(clean(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            placeholder="Enter or paste a number"
+            aria-label="Number to dial"
+            autoComplete="off"
+            className="tnum h-full min-w-0 flex-1 bg-transparent text-lg placeholder:text-muted-2 focus:outline-none"
+          />
+        ) : (
+          <span className="tnum flex-1 truncate text-lg text-muted" aria-live="polite">
+            {sent || 'Tones send to the call'}
+          </span>
+        )}
 
         {composing && value && (
           <button
@@ -170,7 +188,7 @@ export function DialPad({
 
       {composing && !value && (
         <p className="mt-2 text-center text-[11px] text-muted-2">
-          Type it, or paste a copied number (⌘V / Ctrl+V)
+          Click the field and paste, or just start typing.
         </p>
       )}
     </div>
