@@ -7,14 +7,17 @@ import { toE164, timezoneForState } from '@/lib/utils'
 
 export type ImportResult = {
   inserted: number
+  /** Rows whose phone already belongs to a company in the CRM. Left untouched. */
+  existing: number
   skipped: number
   errors: string[]
 }
 
 /**
- * CSV import. Upserts on phone, which is the unique key -- re-importing the
- * same list refreshes names and cities instead of creating duplicate rows the
- * dialer would then call twice.
+ * CSV import. Phone is the unique key. A row whose phone is already in the
+ * CRM is left alone rather than overwritten: that company may have call
+ * history, notes and an outcome, and a fresh list export must not rename it
+ * or reset its source. The dialer therefore never gets a duplicate to call.
  */
 export async function importCompanies(
   csvText: string,
@@ -23,17 +26,18 @@ export async function importCompanies(
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return { inserted: 0, skipped: 0, errors: [], error: 'Not signed in.' }
+  if (!user) return { inserted: 0, existing: 0, skipped: 0, errors: [], error: 'Not signed in.' }
 
   const rows = parseCsv(csvText)
   if (rows.length < 2) {
-    return { inserted: 0, skipped: 0, errors: [], error: 'Need a header row and at least one lead.' }
+    return { inserted: 0, existing: 0, skipped: 0, errors: [], error: 'Need a header row and at least one lead.' }
   }
 
   const headers = rows[0].map(normalizeHeader)
   if (!headers.includes('name') || !headers.includes('phone')) {
     return {
       inserted: 0,
+      existing: 0,
       skipped: 0,
       errors: [],
       error: 'CSV must have a company name column and a phone column.',
@@ -81,19 +85,20 @@ export async function importCompanies(
   })
 
   if (payload.length === 0) {
-    return { inserted: 0, skipped: errors.length, errors, error: 'No importable rows.' }
+    return { inserted: 0, existing: 0, skipped: errors.length, errors, error: 'No importable rows.' }
   }
 
   const { error, count } = await supabase
     .from('companies')
-    .upsert(payload as never, { onConflict: 'phone', count: 'exact' })
+    .upsert(payload as never, { onConflict: 'phone', ignoreDuplicates: true, count: 'exact' })
     .select('id')
 
   if (error) {
-    return { inserted: 0, skipped: errors.length, errors, error: error.message }
+    return { inserted: 0, existing: 0, skipped: errors.length, errors, error: error.message }
   }
 
+  const inserted = count ?? 0
   revalidatePath('/crm')
   revalidatePath('/leads')
-  return { inserted: count ?? payload.length, skipped: errors.length, errors }
+  return { inserted, existing: payload.length - inserted, skipped: errors.length, errors }
 }

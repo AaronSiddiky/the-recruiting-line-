@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { env } from '@/lib/env'
 import { toE164, formatPhone } from '@/lib/utils'
-import { AMD_TIMEOUT_SECONDS, DIAL_TIMEOUT_SECONDS } from '@/lib/constants'
+import { DIAL_TIMEOUT_SECONDS } from '@/lib/constants'
 
 /**
  * Dial one number the agent typed by hand.
@@ -135,10 +135,6 @@ export async function POST(request: Request) {
       }),
       statusCallback: webhookUrl('/api/twilio/status', { callId: callRow.id }),
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      machineDetection: 'Enable',
-      machineDetectionTimeout: AMD_TIMEOUT_SECONDS,
-      asyncAmd: 'true',
-      asyncAmdStatusCallback: webhookUrl('/api/twilio/amd', { callId: callRow.id }),
     })
 
     await admin.from('calls').update({ call_sid: call.sid }).eq('id', callRow.id)

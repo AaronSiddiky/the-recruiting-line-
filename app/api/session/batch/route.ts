@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { env } from '@/lib/env'
 import { withinCallingHours } from '@/lib/utils'
-import { AMD_TIMEOUT_SECONDS, DIAL_TIMEOUT_SECONDS, DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
+import { DIAL_TIMEOUT_SECONDS, DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
 export type BatchLine = {
   callId: string
@@ -105,14 +105,8 @@ export async function POST(request: Request) {
           }),
           statusCallback: webhookUrl('/api/twilio/status', { callId: lead.call_id }),
           statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-          // Async AMD: bridge the human immediately, learn it was a machine a
-          // beat later. Sync AMD would make every real person wait in silence.
-          machineDetection: 'Enable',
-          machineDetectionTimeout: AMD_TIMEOUT_SECONDS,
-          asyncAmd: 'true',
-          asyncAmdStatusCallback: webhookUrl('/api/twilio/amd', {
-            callId: lead.call_id,
-          }),
+          // No answering-machine detection: it misjudged real people, so the
+          // first pickup wins outright and the rep hangs up on any voicemail.
         })
 
         await admin

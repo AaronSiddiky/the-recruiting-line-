@@ -80,6 +80,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
                 <p className="text-good">
                   Imported {result.inserted}{' '}
                   {result.inserted === 1 ? 'company' : 'companies'}
+                  {result.existing > 0 && `, ${result.existing} already in the CRM (left unchanged)`}
                   {result.skipped > 0 && `, skipped ${result.skipped}`}.
                 </p>
               )}

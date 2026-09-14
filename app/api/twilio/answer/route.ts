@@ -2,7 +2,7 @@ import { after } from 'next/server'
 import twilio from 'twilio'
 import { verifyTwilioRequest, twiml } from '@/lib/twilio/verify'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { startRecording } from '@/lib/twilio/calls'
+import { hangUpLosers, startRecording } from '@/lib/twilio/calls'
 import { LOSING_LEG_BEHAVIOR, LOSING_LEG_WHISPER } from '@/lib/constants'
 
 /**
@@ -14,12 +14,11 @@ import { LOSING_LEG_BEHAVIOR, LOSING_LEG_WHISPER } from '@/lib/constants'
  * webhooks land. Nothing here decides the winner in application code, because
  * anything we wrote by hand would be a check-then-act race.
  *
- * The winner's TwiML goes back immediately and the recording starts after the
- * response is flushed, so the person who just said "hello" is not listening to
- * silence. The other legs are deliberately left ringing: until machine
- * detection rules, this pickup may be a voicemail greeting, and dropping three
- * live lines for a recording is how a batch gets wasted. /api/twilio/amd drops
- * them once a person is confirmed, or hands the batch back if it was a machine.
+ * The winner's TwiML goes back immediately; the recording starts and the other
+ * legs are hung up after the response is flushed, so the person who just said
+ * "hello" is not listening to silence. There is no answering-machine
+ * detection: the first pickup wins, voicemail or not, and the rep hangs up on
+ * a greeting and moves on.
  */
 export async function POST(request: Request) {
   const verified = await verifyTwilioRequest(request)
@@ -82,6 +81,8 @@ export async function POST(request: Request) {
         call_sid: callSid,
       })
       .eq('id', callId)
+
+    if (batchId) await hangUpLosers(batchId, callId)
 
     try {
       await startRecording(callSid, callId)

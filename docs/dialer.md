@@ -34,9 +34,9 @@ Twilio Programmable Voice · Deepgram · Claude
    an outcome. The recording is archived, transcribed and summarized in the
    background and appears on the company page about a minute later.
 
-Answering-machine detection runs in **async** mode: the call bridges
-immediately and the machine/human verdict arrives a beat later. Synchronous AMD
-would make every real human wait ~3 seconds in dead air.
+There is no answering-machine detection. It misjudged real people often enough
+that the first pickup now wins outright; a voicemail greeting is a call the rep
+hangs up on and dispositions like any other.
 
 ---
 
@@ -112,7 +112,7 @@ npm run dev
 app/(dialer)/(app)/crm    the CRM grid, inline editing, CSV import
 app/(dialer)/(app)/companies/[id] call history, recordings, AI summaries
 app/(dialer)/(app)/dialer the parallel dialer + exit interview
-app/api/twilio/*          webhooks: answer (the race), status, amd, recording
+app/api/twilio/*          webhooks: answer (the race), status, recording
 app/api/session/*         start / batch fan-out / end
 lib/twilio                REST client, signature verification, leg control
 lib/ai/summarize.ts       archive → transcribe → structured summary
