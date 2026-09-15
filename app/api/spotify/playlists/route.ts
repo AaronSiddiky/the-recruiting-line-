@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { spotify, SpotifyError } from '@/lib/spotify/server'
 
 type Page = {
-  items: { id: string; name: string; uri: string; images?: { url: string; width: number | null }[]; tracks?: { total: number } }[]
+  items: { id: string; name: string; uri: string; images?: { url: string; width: number | null }[]; items?: { total: number }; tracks?: { total: number } }[]
 }
 
 export async function GET() {
@@ -21,7 +21,7 @@ export async function GET() {
         name: p.name,
         uri: p.uri,
         image: p.images?.slice().sort((a, b) => (a.width ?? 999) - (b.width ?? 999))[0]?.url ?? null,
-        tracks: p.tracks?.total ?? null,
+        tracks: p.items?.total ?? p.tracks?.total ?? null,
       })),
     })
   } catch (e) {

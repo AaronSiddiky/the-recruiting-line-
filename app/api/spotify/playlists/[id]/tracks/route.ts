@@ -3,7 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { spotify, SpotifyError } from '@/lib/spotify/server'
 import { trackView, type SpotifyItem } from '@/lib/spotify/views'
 
-type Page = { items: { track: SpotifyItem | null }[]; next: string | null }
+// Spotify renamed /tracks to /items in 2025; entries carry the song as `item`
+// (older responses used `track`, kept as a fallback).
+type Page = { items: { item?: SpotifyItem | null; track?: SpotifyItem | null }[]; next: string | null }
 
 export async function GET(_request: NextRequest, ctx: RouteContext<'/api/spotify/playlists/[id]/tracks'>) {
   const { id } = await ctx.params
@@ -15,9 +17,12 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/spotify
   if (!/^[A-Za-z0-9]+$/.test(id)) return NextResponse.json({ error: 'Bad playlist.' }, { status: 400 })
 
   try {
-    const page = await spotify<Page>(user.id, `/playlists/${id}/tracks?limit=100&fields=items(track(id,name,uri,duration_ms,artists(name),album(name,images))),next`)
+    const page = await spotify<Page>(
+      user.id,
+      `/playlists/${id}/items?limit=100&fields=items(item(id,name,uri,duration_ms,artists(name),album(name,images))),next`,
+    )
     return NextResponse.json({
-      tracks: (page?.items ?? []).map((i) => trackView(i.track)).filter(Boolean),
+      tracks: (page?.items ?? []).map((i) => trackView(i.item ?? i.track)).filter(Boolean),
       more: !!page?.next,
     })
   } catch (e) {

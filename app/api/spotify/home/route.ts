@@ -4,7 +4,7 @@ import { spotify, SpotifyError } from '@/lib/spotify/server'
 import { trackView, type SpotifyItem } from '@/lib/spotify/views'
 
 type Img = { url: string; width: number | null }
-type PlaylistRaw = { id: string; name: string; uri: string; images?: Img[]; tracks?: { total: number }; owner?: { id?: string; display_name?: string } }
+type PlaylistRaw = { id: string; name: string; uri: string; images?: Img[]; items?: { total: number }; tracks?: { total: number }; owner?: { id?: string; display_name?: string } }
 type Page<T> = { items: T[]; total?: number }
 type Artist = { id: string; name: string; uri: string; images?: Img[] }
 
@@ -15,7 +15,7 @@ const playlist = (p: PlaylistRaw) => ({
   name: p.name,
   uri: p.uri,
   image: largest(p.images),
-  tracks: p.tracks?.total ?? null,
+  tracks: p.items?.total ?? p.tracks?.total ?? null,
   by: p.owner?.display_name ?? null,
   bySpotify: p.owner?.id === 'spotify',
 })
