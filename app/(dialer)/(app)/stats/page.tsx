@@ -27,15 +27,16 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
     .select('id, full_name, email')
     .order('created_at')
 
-  // Losing legs of a parallel batch (`canceled`) never rang anyone, so they
-  // are not calls in any sense a rep would count.
+  // One row per logged outcome. A four-line batch creates four call rows, but
+  // only the leg that reached the exit interview is a conversation a rep
+  // would count, so everything without an outcome is left out.
   const rows: Row[] = []
   let error: string | null = null
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     let q = supabase
       .from('calls')
       .select('agent_id, company_id, status, outcome')
-      .neq('status', 'canceled')
+      .not('outcome', 'is', null)
       .gte('started_at', STATS_SINCE)
       .order('started_at', { ascending: false })
       .range(from, from + PAGE - 1)
@@ -67,14 +68,15 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
       id: p.id,
       name: p.full_name || p.email || 'Rep',
       calls: mine.length,
-      pickups: mine.filter((r) => r.status === 'connected').length,
+      // "No answer" is a voicemail or nobody there; anything else meant a person.
+      pickups: mine.filter((r) => r.outcome !== 'no_answer').length,
       // A company is one customer no matter how many calls it took.
       customers: new Set(mine.filter((r) => r.outcome === 'customer').map((r) => r.company_id)).size,
     }
   })
   const team = {
     calls: rows.length,
-    pickups: rows.filter((r) => r.status === 'connected').length,
+    pickups: rows.filter((r) => r.outcome !== 'no_answer').length,
     customers: new Set(rows.filter((r) => r.outcome === 'customer').map((r) => r.company_id)).size,
   }
 
@@ -140,9 +142,9 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
           </div>
           <p className="mt-3 text-xs text-muted">
             Counting from {new Date(STATS_SINCE).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.
-            Picked up means the call connected to a person. Customers are companies marked
-            &ldquo;Became a customer&rdquo; in the exit interview. Conversion is customers
-            divided by calls picked up.
+            Calls counts one per logged outcome, not per dialed line. Picked up is every outcome
+            except &ldquo;No answer&rdquo;. Customers are companies marked &ldquo;Became a
+            customer&rdquo;. Conversion is customers divided by calls picked up.
           </p>
 
           <h2 className="mt-8 mb-1 text-sm font-semibold">Recordings</h2>
