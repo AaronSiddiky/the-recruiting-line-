@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { exchangeCode, redirectUri, SpotifyError } from '@/lib/spotify/server'
+import { exchangeCode, redirectUri } from '@/lib/spotify/server'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
