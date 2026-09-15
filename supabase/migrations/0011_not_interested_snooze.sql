@@ -4,6 +4,14 @@
 -- picks the company up again when that date arrives, the same as a
 -- call-back. Only wrong numbers, customers and do-not-call stay out for good.
 
+-- Drop first: `create or replace` cannot change a function's result columns,
+-- and a database that got this function from an older script refuses the
+-- replace ("cannot change return type of existing function"). Nothing grants
+-- on it explicitly, and the drop + create run in one transaction, so the
+-- dialer never sees it missing.
+begin;
+drop function if exists public.start_dial_batch(uuid, uuid, integer);
+
 create or replace function public.start_dial_batch(
   p_session uuid,
   p_agent uuid,
@@ -73,3 +81,5 @@ begin
   end if;
 end;
 $$;
+
+commit;
