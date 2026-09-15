@@ -133,8 +133,15 @@ export async function spotify<T = unknown>(
   })
   if (res.status === 204) return null
   if (res.ok) {
+    // Player commands sometimes answer 200 with a bare request id rather than
+    // JSON; anything unparseable is treated as "done, nothing to return".
     const text = await res.text()
-    return text ? (JSON.parse(text) as T) : null
+    if (!text) return null
+    try {
+      return JSON.parse(text) as T
+    } catch {
+      return null
+    }
   }
   const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; reason?: string } }
   const reason = body.error?.reason
