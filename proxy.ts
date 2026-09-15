@@ -81,5 +81,6 @@ export const config = {
     '/api/calls/:path*',
     '/api/recordings/:path*',
     '/api/voicemail/:path*',
+    '/api/spotify/:path*',
   ],
 }

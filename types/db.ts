@@ -90,6 +90,16 @@ export type DialBatch = {
   resolved_at: string | null
 }
 
+export type SpotifyToken = {
+  user_id: string
+  access_token: string
+  refresh_token: string
+  expires_at: string
+  scope: string | null
+  display_name: string | null
+  updated_at: string
+}
+
 export type Call = {
   id: string
   company_id: string
@@ -147,6 +157,7 @@ export type Database = {
           Partial<Pick<Company, 'id' | 'notes' | 'do_not_call' | 'source' | 'reached_out' | 'email' | 'priority'>>
       >
       call_sessions: Table<CallSession>
+      spotify_tokens: Table<SpotifyToken>
       dial_batches: Table<DialBatch>
       calls: Table<Call>
     }

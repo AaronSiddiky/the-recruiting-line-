@@ -65,4 +65,8 @@ export const env = {
   get deepgramApiKey() {
     return required('DEEPGRAM_API_KEY')
   },
+  /** Spotify app client ID. PKCE sign-in, so no client secret is needed. */
+  get spotifyClientId() {
+    return required('SPOTIFY_CLIENT_ID')
+  },
 }
