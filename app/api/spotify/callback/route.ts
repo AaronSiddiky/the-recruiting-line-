@@ -4,7 +4,10 @@ import { exchangeCode, redirectUri, SpotifyError } from '@/lib/spotify/server'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
-  const back = (q: string) => NextResponse.redirect(new URL(`/dialer?spotify=${q}`, url.origin))
+  const back = (q: string, reason?: string) =>
+    NextResponse.redirect(
+      new URL(`/dialer?spotify=${q}${reason ? `&reason=${encodeURIComponent(reason)}` : ''}`, url.origin),
+    )
 
   const supabase = await createClient()
   const {
@@ -15,15 +18,23 @@ export async function GET(request: NextRequest) {
   const code = url.searchParams.get('code')
   const state = url.searchParams.get('state')
   const verifier = request.cookies.get('spotify_pkce')?.value
-  if (url.searchParams.get('error') || !code || state !== user.id || !verifier) {
-    return back('denied')
+  const spotifyError = url.searchParams.get('error')
+  if (spotifyError) return back('denied', spotifyError)
+  if (!code || state !== user.id || !verifier) {
+    return back('denied', 'The sign-in did not come back with a valid code. Try again.')
   }
 
   try {
     await exchangeCode(user.id, code, verifier, redirectUri(url.origin))
   } catch (e) {
-    console.error('Spotify callback failed', e instanceof SpotifyError ? e.message : e)
-    return back('failed')
+    const message = e instanceof Error ? e.message : 'Unknown error'
+    console.error('Spotify callback failed', message)
+    return back(
+      'failed',
+      /spotify_tokens/.test(message)
+        ? 'The database is missing the Spotify table. Run supabase/migrations/0015_spotify.sql.'
+        : message,
+    )
   }
 
   const res = back('connected')

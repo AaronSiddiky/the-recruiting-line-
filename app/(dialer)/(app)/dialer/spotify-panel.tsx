@@ -49,6 +49,7 @@ export function SpotifyPanel() {
   const [showLists, setShowLists] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [callback, setCallback] = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState(() => Date.now())
   const [now, setNow] = useState(() => Date.now())
 
@@ -63,6 +64,28 @@ export function SpotifyPanel() {
     } catch {
       // Network blip; the next poll will catch up.
     }
+  }, [])
+
+  // The sign-in round trip lands on /dialer?spotify=…; surface the result once.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('spotify')
+    if (!result) return
+    const reason = params.get('reason')
+    const text =
+      result === 'connected'
+        ? null
+        : result === 'denied'
+          ? `Spotify did not authorize the dialer${reason ? `: ${reason}` : '.'}`
+          : `Connecting failed${reason ? `: ${reason}` : '.'}`
+    queueMicrotask(() => {
+      setCallback(text)
+      setOpen(true)
+    })
+    params.delete('spotify')
+    params.delete('reason')
+    const clean = `${window.location.pathname}${params.size ? `?${params}` : ''}`
+    window.history.replaceState(null, '', clean)
   }, [])
 
   useEffect(() => {
@@ -160,6 +183,12 @@ export function SpotifyPanel() {
       </div>
 
       {open && !state && <p className="p-3 text-xs text-muted">Checking Spotify…</p>}
+
+      {open && callback && (
+        <p role="alert" className="border-b border-bad-bg bg-bad-bg px-3 py-2 text-xs text-bad">
+          {callback}
+        </p>
+      )}
 
       {open && state && !state.connected && (
         <div className="flex flex-col gap-2 p-3">

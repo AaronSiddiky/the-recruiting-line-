@@ -14,3 +14,6 @@ create table if not exists spotify_tokens (
 );
 
 alter table spotify_tokens enable row level security;
+
+-- Make the new table visible to the API immediately.
+notify pgrst, 'reload schema';

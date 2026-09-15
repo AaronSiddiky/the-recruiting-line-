@@ -66,7 +66,7 @@ export async function exchangeCode(userId: string, code: string, verifier: strin
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null)
 
-  await createAdminClient()
+  const { error } = await createAdminClient()
     .from('spotify_tokens')
     .upsert({
       user_id: userId,
@@ -77,6 +77,7 @@ export async function exchangeCode(userId: string, code: string, verifier: strin
       display_name: me?.display_name ?? null,
       updated_at: new Date().toISOString(),
     })
+  if (error) throw new SpotifyError(`Could not save the Spotify sign-in (spotify_tokens): ${error.message}`, 500)
 }
 
 /** A valid access token for this rep, refreshing if it expires within a minute. */
