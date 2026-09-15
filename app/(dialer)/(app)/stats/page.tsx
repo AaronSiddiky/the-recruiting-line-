@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
-import { STATS_SINCE } from '@/lib/constants'
+import { STATS_OUTCOME_SINCE, STATS_SINCE } from '@/lib/constants'
 import { CallHistory, type CallRow } from '../companies/[id]/call-history'
 
 const RANGES = [
@@ -10,7 +10,15 @@ const RANGES = [
   { value: '7', label: '7 days', days: 7 },
 ] as const
 
-type Row = { agent_id: string | null; company_id: string; status: string; outcome: string | null }
+type Row = { agent_id: string | null; company_id: string; status: string; outcome: string | null; started_at: string }
+
+/**
+ * Before the cutover a call was any line that rang; after it a call is a
+ * logged outcome. "Picked up" follows the same split.
+ */
+const isCall = (r: Row) => (r.started_at < STATS_OUTCOME_SINCE ? r.status !== 'canceled' : r.outcome !== null)
+const isPickup = (r: Row) =>
+  r.started_at < STATS_OUTCOME_SINCE ? r.status === 'connected' : r.outcome !== null && r.outcome !== 'no_answer'
 
 const PAGE = 1000
 const MAX_ROWS = 50_000
@@ -27,16 +35,15 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
     .select('id, full_name, email')
     .order('created_at')
 
-  // One row per logged outcome. A four-line batch creates four call rows, but
-  // only the leg that reached the exit interview is a conversation a rep
-  // would count, so everything without an outcome is left out.
+  // Fetch every non-canceled row and apply the counting rule per row, since it
+  // depends on when the call happened (see isCall).
   const rows: Row[] = []
   let error: string | null = null
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     let q = supabase
       .from('calls')
-      .select('agent_id, company_id, status, outcome')
-      .not('outcome', 'is', null)
+      .select('agent_id, company_id, status, outcome, started_at')
+      .neq('status', 'canceled')
       .gte('started_at', STATS_SINCE)
       .order('started_at', { ascending: false })
       .range(from, from + PAGE - 1)
@@ -67,16 +74,15 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
     return {
       id: p.id,
       name: p.full_name || p.email || 'Rep',
-      calls: mine.length,
-      // "No answer" is a voicemail or nobody there; anything else meant a person.
-      pickups: mine.filter((r) => r.outcome !== 'no_answer').length,
+      calls: mine.filter(isCall).length,
+      pickups: mine.filter(isPickup).length,
       // A company is one customer no matter how many calls it took.
       customers: new Set(mine.filter((r) => r.outcome === 'customer').map((r) => r.company_id)).size,
     }
   })
   const team = {
-    calls: rows.length,
-    pickups: rows.filter((r) => r.outcome !== 'no_answer').length,
+    calls: rows.filter(isCall).length,
+    pickups: rows.filter(isPickup).length,
     customers: new Set(rows.filter((r) => r.outcome === 'customer').map((r) => r.company_id)).size,
   }
 
@@ -142,8 +148,8 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
           </div>
           <p className="mt-3 text-xs text-muted">
             Counting from {new Date(STATS_SINCE).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.
-            Calls counts one per logged outcome, not per dialed line. Picked up is every outcome
-            except &ldquo;No answer&rdquo;. Customers are companies marked &ldquo;Became a
+            Since Sep 15, 2026, Calls counts one per logged outcome and Picked up is every outcome
+            except &ldquo;No answer&rdquo;; earlier calls keep the original per-line count. Customers are companies marked &ldquo;Became a
             customer&rdquo;. Conversion is customers divided by calls picked up.
           </p>
 

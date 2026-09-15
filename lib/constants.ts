@@ -127,3 +127,10 @@ export const STATE_TIMEZONES: Record<string, string> = {
  * show every call.
  */
 export const STATS_SINCE = '2026-09-13T23:36:08Z'
+
+/**
+ * Calls before this instant count every dialed line that rang (the original
+ * method); calls from this instant on count one per logged outcome. Keeps the
+ * totals reps had already earned when the counting rule changed.
+ */
+export const STATS_OUTCOME_SINCE = '2026-09-15T18:06:55Z'
