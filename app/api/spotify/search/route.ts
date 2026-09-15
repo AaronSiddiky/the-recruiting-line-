@@ -7,6 +7,8 @@ type Result = {
   tracks?: { items: SpotifyItem[] }
   playlists?: { items: ({ id: string; name: string; uri: string; images?: { url: string; width: number | null }[]; owner?: { display_name?: string } } | null)[] }
   albums?: { items: { id: string; name: string; uri: string; images?: { url: string; width: number | null }[]; artists?: { name: string }[] }[] }
+  shows?: { items: ({ id: string; name: string; uri: string; images?: { url: string; width: number | null }[]; publisher?: string } | null)[] }
+  episodes?: { items: (SpotifyItem | null)[] }
 }
 
 const smallest = (images?: { url: string; width: number | null }[]) =>
@@ -20,12 +22,12 @@ export async function GET(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
 
   const q = (new URL(request.url).searchParams.get('q') ?? '').trim().slice(0, 120)
-  if (!q) return NextResponse.json({ tracks: [], playlists: [], albums: [] })
+  if (!q) return NextResponse.json({ tracks: [], playlists: [], albums: [], shows: [], episodes: [] })
 
   try {
-    const r = await spotify<Result>(user.id, `/search?type=track,playlist,album&limit=10&q=${encodeURIComponent(q)}`)
+    const r = await spotify<Result>(user.id, `/search?type=track,playlist,album,show,episode&limit=10&q=${encodeURIComponent(q)}`)
     return NextResponse.json({
-      tracks: (r?.tracks?.items ?? []).map(trackView).filter(Boolean),
+      tracks: (r?.tracks?.items ?? []).map((i) => trackView(i)).filter(Boolean),
       playlists: (r?.playlists?.items ?? []).filter(Boolean).map((p) => ({
         id: p!.id,
         name: p!.name,
@@ -40,6 +42,14 @@ export async function GET(request: NextRequest) {
         image: smallest(a.images),
         by: a.artists?.map((x) => x.name).join(', ') ?? null,
       })),
+      shows: (r?.shows?.items ?? []).filter(Boolean).map((sh) => ({
+        id: sh!.id,
+        name: sh!.name,
+        uri: sh!.uri,
+        image: smallest(sh!.images),
+        by: sh!.publisher ?? null,
+      })),
+      episodes: (r?.episodes?.items ?? []).map((e) => trackView(e, 'Podcast episode')).filter(Boolean),
     })
   } catch (e) {
     const status = e instanceof SpotifyError ? e.status : 500

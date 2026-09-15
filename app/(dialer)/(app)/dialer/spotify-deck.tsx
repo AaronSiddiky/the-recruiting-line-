@@ -38,16 +38,18 @@ type State = {
 }
 type Playlist = { id: string; name: string; uri: string; image: string | null; tracks: number | null; by?: string | null }
 type Artist = { id: string; name: string; uri: string; image: string | null }
+type Show = { id: string; name: string; uri: string; image: string | null; by?: string | null; total?: number | null }
 type HomeData = {
   playlists: Playlist[]
+  shows: Show[]
   madeForYou: Playlist[]
   topArtists: Artist[]
   topTracks: TrackView[]
   recent: TrackView[]
   liked: { total: number; tracks: TrackView[] }
 }
-type SearchResult = { tracks: TrackView[]; playlists: Playlist[]; albums: Playlist[] }
-type View = { kind: 'home' } | { kind: 'playlist'; playlist: Playlist } | { kind: 'liked' }
+type SearchResult = { tracks: TrackView[]; playlists: Playlist[]; albums: Playlist[]; shows: Show[]; episodes: TrackView[] }
+type View = { kind: 'home' } | { kind: 'playlist'; playlist: Playlist } | { kind: 'liked' } | { kind: 'show'; show: Show }
 
 const POLL_MS = 4000
 
@@ -139,7 +141,7 @@ export function SpotifyDeck() {
     if (!connected || home) return
     api<HomeData>('/api/spotify/home')
       .then(setHome)
-      .catch(() => setHome({ playlists: [], madeForYou: [], topArtists: [], topTracks: [], recent: [], liked: { total: 0, tracks: [] } }))
+      .catch(() => setHome({ playlists: [], shows: [], madeForYou: [], topArtists: [], topTracks: [], recent: [], liked: { total: 0, tracks: [] } }))
   }, [connected, home])
 
   const trackUri = state?.track?.uri
@@ -151,11 +153,13 @@ export function SpotifyDeck() {
   }, [connected, trackUri])
 
   useEffect(() => {
-    if (view.kind !== 'playlist') return
+    if (view.kind !== 'playlist' && view.kind !== 'show') return
     let stale = false
-    api<{ tracks: TrackView[] }>(`/api/spotify/playlists/${view.playlist.id}/tracks`)
-      .then((d) => !stale && setTracks(d.tracks))
-      .catch(() => !stale && setTracks([]))
+    const req =
+      view.kind === 'playlist'
+        ? api<{ tracks: TrackView[] }>(`/api/spotify/playlists/${view.playlist.id}/tracks`).then((d) => d.tracks)
+        : api<{ episodes: TrackView[] }>(`/api/spotify/shows/${view.show.id}/episodes`).then((d) => d.episodes)
+    req.then((list) => !stale && setTracks(list)).catch(() => !stale && setTracks([]))
     return () => {
       stale = true
     }
@@ -170,7 +174,7 @@ export function SpotifyDeck() {
     const t = setTimeout(() => {
       api<SearchResult>(`/api/spotify/search?q=${encodeURIComponent(q)}`)
         .then(setResults)
-        .catch(() => setResults({ tracks: [], playlists: [], albums: [] }))
+        .catch(() => setResults({ tracks: [], playlists: [], albums: [], shows: [], episodes: [] }))
     }, 350)
     return () => clearTimeout(t)
   }, [query])
@@ -294,13 +298,14 @@ export function SpotifyDeck() {
           <div className="flex">
             <div className="min-w-0 flex-1 px-5 pb-6">
               {results ? (
-                <SearchView results={results} active={state!.track?.uri} onPlayTrack={(t) => void run({ action: 'play', uris: [t.uri] })} onQueue={(t) => void run({ action: 'queue', uri: t.uri })} onPlayContext={(uri) => void run({ action: 'play', contextUri: uri })} onOpen={(p) => open({ kind: 'playlist', playlist: p })} />
+                <SearchView results={results} active={state!.track?.uri} onPlayTrack={(t) => void run({ action: 'play', uris: [t.uri] })} onQueue={(t) => void run({ action: 'queue', uri: t.uri })} onPlayContext={(uri) => void run({ action: 'play', contextUri: uri })} onOpen={(p) => open({ kind: 'playlist', playlist: p })} onOpenShow={(sh) => open({ kind: 'show', show: sh })} />
               ) : view.kind === 'home' ? (
                 <HomeView
                   home={home}
                   first={first}
                   contextUri={state!.contextUri ?? null}
                   onOpen={(p) => open({ kind: 'playlist', playlist: p })}
+                  onOpenShow={(sh) => open({ kind: 'show', show: sh })}
                   onOpenLiked={() => open({ kind: 'liked' })}
                   onPlayContext={(uri) => void run({ action: 'play', contextUri: uri })}
                   onPlayTrack={(t) => void run({ action: 'play', uris: [t.uri] })}
@@ -316,6 +321,20 @@ export function SpotifyDeck() {
                   onBack={() => open({ kind: 'home' })}
                   onPlayAll={() => playLiked()}
                   onPlayTrack={(t) => playLiked(t)}
+                  onQueue={(t) => void run({ action: 'queue', uri: t.uri })}
+                />
+              ) : view.kind === 'show' ? (
+                <ListView
+                  kind="Podcast"
+                  title={view.show.name}
+                  subtitle={[view.show.by, view.show.total != null ? `${view.show.total} episodes` : null].filter(Boolean).join(' · ')}
+                  art={<Art src={view.show.image} className="size-28 rounded" />}
+                  tracks={tracks}
+                  active={state!.track?.uri}
+                  busy={busy}
+                  onBack={() => open({ kind: 'home' })}
+                  onPlayAll={() => void run({ action: 'play', contextUri: view.show.uri })}
+                  onPlayTrack={(t) => void run({ action: 'play', uris: [t.uri] })}
                   onQueue={(t) => void run({ action: 'queue', uri: t.uri })}
                 />
               ) : (
@@ -446,11 +465,12 @@ export function SpotifyDeck() {
 
 /* ---------- views ---------- */
 
-function HomeView({ home, first, contextUri, onOpen, onOpenLiked, onPlayContext, onPlayTrack }: {
+function HomeView({ home, first, contextUri, onOpen, onOpenShow, onOpenLiked, onPlayContext, onPlayTrack }: {
   home: HomeData | null
   first: string
   contextUri: string | null
   onOpen: (p: Playlist) => void
+  onOpenShow: (s: Show) => void
   onOpenLiked: () => void
   onPlayContext: (uri: string) => void
   onPlayTrack: (t: TrackView) => void
@@ -490,6 +510,12 @@ function HomeView({ home, first, contextUri, onOpen, onOpenLiked, onPlayContext,
         </Shelf>
       )}
 
+      {home.shows.length > 0 && (
+        <Shelf title="Your podcasts">
+          {home.shows.map((sh) => <Card key={sh.id} image={sh.image} title={sh.name} subtitle={sh.by ?? 'Podcast'} onClick={() => onOpenShow(sh)} onPlay={() => onPlayContext(sh.uri)} playing={contextUri === sh.uri} />)}
+        </Shelf>
+      )}
+
       {home.playlists.length > 0 && (
         <Shelf title="Your playlists">
           {home.playlists.map((p) => <Card key={p.id} image={p.image} title={p.name} subtitle={p.tracks != null ? `${p.tracks} songs` : (p.by ?? '')} onClick={() => onOpen(p)} onPlay={() => onPlayContext(p.uri)} playing={contextUri === p.uri} />)}
@@ -499,15 +525,16 @@ function HomeView({ home, first, contextUri, onOpen, onOpenLiked, onPlayContext,
   )
 }
 
-function SearchView({ results, active, onPlayTrack, onQueue, onPlayContext, onOpen }: {
+function SearchView({ results, active, onPlayTrack, onQueue, onPlayContext, onOpen, onOpenShow }: {
   results: SearchResult
   active?: string
   onPlayTrack: (t: TrackView) => void
   onQueue: (t: TrackView) => void
   onPlayContext: (uri: string) => void
   onOpen: (p: Playlist) => void
+  onOpenShow: (s: Show) => void
 }) {
-  const empty = results.tracks.length + results.playlists.length + results.albums.length === 0
+  const empty = results.tracks.length + results.playlists.length + results.albums.length + results.shows.length + results.episodes.length === 0
   return (
     <div className="space-y-6 pt-2">
       {empty && <p className="py-6 text-sm text-[#b3b3b3]">Nothing found.</p>}
@@ -523,11 +550,21 @@ function SearchView({ results, active, onPlayTrack, onQueue, onPlayContext, onOp
       {results.albums.length > 0 && (
         <Shelf title="Albums">{results.albums.map((a) => <Card key={a.id} image={a.image} title={a.name} subtitle={a.by ?? ''} onPlay={() => onPlayContext(a.uri)} playing={false} />)}</Shelf>
       )}
+      {results.shows.length > 0 && (
+        <Shelf title="Podcasts">{results.shows.map((sh) => <Card key={sh.id} image={sh.image} title={sh.name} subtitle={sh.by ?? 'Podcast'} onClick={() => onOpenShow(sh)} onPlay={() => onPlayContext(sh.uri)} playing={false} />)}</Shelf>
+      )}
+      {results.episodes.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-xl font-bold">Episodes</h3>
+          <ol>{results.episodes.map((e) => <Row key={e.uri} track={e} active={e.uri === active} onPlay={() => onPlayTrack(e)} onQueue={() => onQueue(e)} />)}</ol>
+        </div>
+      )}
     </div>
   )
 }
 
-function ListView({ title, subtitle, art, tracks, active, busy, onBack, onPlayAll, onPlayTrack, onQueue }: {
+function ListView({ kind = 'Playlist', title, subtitle, art, tracks, active, busy, onBack, onPlayAll, onPlayTrack, onQueue }: {
+  kind?: string
   title: string
   subtitle: string
   art: React.ReactNode
@@ -548,7 +585,7 @@ function ListView({ title, subtitle, art, tracks, active, busy, onBack, onPlayAl
       <div className="flex items-end gap-5">
         {art}
         <div className="min-w-0">
-          <p className="text-xs text-[#b3b3b3]">Playlist</p>
+          <p className="text-xs text-[#b3b3b3]">{kind}</p>
           <h2 className="truncate text-3xl font-black tracking-tight">{title}</h2>
           {subtitle && <p className="mt-1 text-xs text-[#b3b3b3]">{subtitle}</p>}
         </div>
@@ -560,7 +597,7 @@ function ListView({ title, subtitle, art, tracks, active, busy, onBack, onPlayAl
       </div>
       <ol className="max-h-[420px] overflow-y-auto pr-1">
         {tracks === null && <li className="py-2 text-xs text-[#b3b3b3]">Loading…</li>}
-        {tracks?.length === 0 && <li className="py-2 text-xs text-[#b3b3b3]">No songs here.</li>}
+        {tracks?.length === 0 && <li className="py-2 text-xs text-[#b3b3b3]">Nothing here.</li>}
         {tracks?.map((t, i) => <Row key={`${t.uri}:${i}`} index={i + 1} track={t} active={t.uri === active} onPlay={() => onPlayTrack(t)} onQueue={() => onQueue(t)} />)}
       </ol>
     </div>

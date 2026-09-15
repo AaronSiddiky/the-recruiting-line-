@@ -6,7 +6,10 @@ export type SpotifyItem = {
   uri: string
   artists?: { name: string }[]
   album?: { name: string; images?: { url: string; width: number | null }[] }
-  show?: { name: string; images?: { url: string; width: number | null }[] }
+  show?: { name: string; publisher?: string; images?: { url: string; width: number | null }[] }
+  /** Episodes fetched from a show carry their own artwork and no `show` block. */
+  images?: { url: string; width: number | null }[]
+  type?: string
 }
 
 export type TrackView = {
@@ -19,15 +22,15 @@ export type TrackView = {
   durationMs: number
 }
 
-export function trackView(item: SpotifyItem | null | undefined): TrackView | null {
+export function trackView(item: SpotifyItem | null | undefined, fallbackArtist = ''): TrackView | null {
   if (!item) return null
-  const images = item.album?.images ?? item.show?.images ?? []
+  const images = item.album?.images ?? item.show?.images ?? item.images ?? []
   const sorted = images.slice().sort((a, b) => (a.width ?? 0) - (b.width ?? 0))
   return {
     uri: item.uri,
     name: item.name,
-    artist: item.artists?.map((a) => a.name).join(', ') ?? item.show?.name ?? '',
-    album: item.album?.name ?? item.show?.name ?? '',
+    artist: item.artists?.map((a) => a.name).join(', ') ?? item.show?.name ?? fallbackArtist,
+    album: item.album?.name ?? item.show?.name ?? fallbackArtist,
     image: sorted[0]?.url ?? null,
     imageLarge: sorted[sorted.length - 1]?.url ?? null,
     durationMs: item.duration_ms,

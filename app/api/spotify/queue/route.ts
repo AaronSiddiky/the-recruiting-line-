@@ -14,7 +14,7 @@ export async function GET() {
 
   try {
     const q = await spotify<Queue>(user.id, '/me/player/queue')
-    return NextResponse.json({ queue: (q?.queue ?? []).slice(0, 10).map(trackView).filter(Boolean) })
+    return NextResponse.json({ queue: (q?.queue ?? []).slice(0, 10).map((i) => trackView(i)).filter(Boolean) })
   } catch (e) {
     const status = e instanceof SpotifyError ? e.status : 500
     return NextResponse.json({ error: (e as Error).message }, { status: status === 401 ? 401 : 502 })

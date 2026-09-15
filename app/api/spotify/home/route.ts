@@ -7,6 +7,7 @@ type Img = { url: string; width: number | null }
 type PlaylistRaw = { id: string; name: string; uri: string; images?: Img[]; items?: { total: number }; tracks?: { total: number }; owner?: { id?: string; display_name?: string } }
 type Page<T> = { items: T[]; total?: number }
 type Artist = { id: string; name: string; uri: string; images?: Img[] }
+type ShowRaw = { show: { id: string; name: string; uri: string; publisher?: string; images?: Img[] } }
 
 const smallest = (images?: Img[]) => images?.slice().sort((a, b) => (a.width ?? 999) - (b.width ?? 999))[0]?.url ?? null
 const largest = (images?: Img[]) => images?.slice().sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.url ?? null
@@ -36,12 +37,13 @@ export async function GET() {
   const safe = <T,>(p: Promise<T | null>) => p.catch((e) => (e instanceof SpotifyError && e.status === 401 ? Promise.reject(e) : null))
 
   try {
-    const [lists, liked, artists, topTracks, recent] = await Promise.all([
+    const [lists, liked, artists, topTracks, recent, shows] = await Promise.all([
       safe(spotify<Page<PlaylistRaw>>(id, '/me/playlists?limit=50')),
       safe(spotify<Page<{ track: SpotifyItem }>>(id, '/me/tracks?limit=50')),
       safe(spotify<Page<Artist>>(id, '/me/top/artists?limit=12&time_range=short_term')),
       safe(spotify<Page<SpotifyItem>>(id, '/me/top/tracks?limit=12&time_range=short_term')),
       safe(spotify<Page<{ track: SpotifyItem; context?: { uri: string } | null }>>(id, '/me/player/recently-played?limit=40')),
+      safe(spotify<Page<ShowRaw>>(id, '/me/shows?limit=20')),
     ])
 
     const playlists = (lists?.items ?? []).filter(Boolean).map(playlist)
@@ -55,9 +57,12 @@ export async function GET() {
       playlists,
       madeForYou: playlists.filter((p) => p.bySpotify),
       topArtists: (artists?.items ?? []).map((a) => ({ id: a.id, name: a.name, uri: a.uri, image: smallest(a.images) })),
-      topTracks: (topTracks?.items ?? []).map(trackView).filter(Boolean),
+      topTracks: (topTracks?.items ?? []).map((i) => trackView(i)).filter(Boolean),
       recent: recentTracks,
       liked: { total: liked?.total ?? 0, tracks: (liked?.items ?? []).map((i) => trackView(i.track)).filter(Boolean) },
+      shows: (shows?.items ?? [])
+        .filter((i) => i?.show)
+        .map((i) => ({ id: i.show.id, name: i.show.name, uri: i.show.uri, image: largest(i.show.images), by: i.show.publisher ?? null })),
     })
   } catch (e) {
     const status = e instanceof SpotifyError ? e.status : 500
