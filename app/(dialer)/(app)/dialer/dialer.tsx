@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { ExitInterview } from './exit-interview'
 import { DialPad } from './dial-pad'
 import { VoicemailSettings } from './voicemail-settings'
+import { SpotifyPanel } from './spotify-panel'
 import { useDialer, type AgentAudio, type AudioLevels } from './use-dialer'
 import {
   describeLine,
@@ -168,6 +169,8 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
           />
         )}
       </div>
+
+      <SpotifyPanel />
 
       {d.phase === 'wrapup' && d.wrap && (
         <ExitInterview

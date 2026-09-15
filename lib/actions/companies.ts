@@ -17,6 +17,7 @@ const patchSchema = z.object({
   source: z.string().trim().max(100).nullable().optional(),
   reached_out: z.boolean().optional(),
   email: z.string().trim().email().max(200).nullable().optional(),
+  priority: z.boolean().optional(),
 })
 
 /**

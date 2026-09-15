@@ -3,17 +3,18 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, Plus } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Plus, Star } from 'lucide-react'
 import { updateCompany } from '@/lib/actions/companies'
 import { cn, formatPhone } from '@/lib/utils'
 import type { Company, Profile } from '@/types/db'
 
 export type LeadRow = Pick<
   Company,
-  'id' | 'name' | 'phone' | 'city' | 'state' | 'source' | 'reached_out' | 'call_count' | 'owner_id'
+  'id' | 'name' | 'phone' | 'city' | 'state' | 'source' | 'reached_out' | 'call_count' | 'owner_id' | 'priority'
 >
 
 const COLUMNS = [
+  { key: 'priority', label: '', sortable: false },
   { key: 'name', label: 'Company', sortable: true },
   { key: 'phone', label: 'Phone', sortable: false },
   { key: 'location', label: 'Location', sortable: true },
@@ -118,6 +119,14 @@ export function LeadsTable({
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} className="hover:bg-surface">
+                <td className="border-b border-border-subtle pl-3 pr-0 py-2">
+                  <PriorityCell
+                    key={`${row.id}:${row.priority}`}
+                    lead={row}
+                    onChange={(priority) => save(row.id, { priority })}
+                  />
+                </td>
+
                 <td className="border-b border-border-subtle px-4 py-2">
                   <Link href={`/companies/${row.id}`} className="font-medium hover:text-accent hover:underline">
                     {row.name}
@@ -258,5 +267,28 @@ function CrmCell({ lead, onChange }: { lead: LeadRow; onChange: (value: boolean)
         </button>
       )}
     </span>
+  )
+}
+
+/**
+ * "Call first": the dialer picks starred leads ahead of everything else, and
+ * clears the star the moment one is dialed, so it is a one-time bump.
+ */
+function PriorityCell({ lead, onChange }: { lead: LeadRow; onChange: (value: boolean) => void }) {
+  const [on, setOn] = useState(lead.priority)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setOn(!on)
+        onChange(!on)
+      }}
+      aria-pressed={on}
+      title={on ? 'Dialed first. Click to remove.' : 'Call first'}
+      aria-label={`${on ? 'Remove' : 'Set'} call-first for ${lead.name}`}
+      className={cn('cursor-pointer rounded p-1', on ? 'text-warn' : 'text-muted-2 opacity-40 hover:opacity-100')}
+    >
+      <Star className="size-3.5" fill={on ? 'currentColor' : 'none'} aria-hidden />
+    </button>
   )
 }

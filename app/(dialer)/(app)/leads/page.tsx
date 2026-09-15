@@ -30,7 +30,7 @@ export default async function LeadsPage(props: PageProps<'/leads'>) {
 
   let query = supabase
     .from('companies')
-    .select('id, name, phone, city, state, source, reached_out, call_count, owner_id', { count: 'exact' })
+    .select('id, name, phone, city, state, source, reached_out, call_count, owner_id, priority', { count: 'exact' })
 
   if (q) {
     // Commas and parentheses are PostgREST filter syntax; strip them so a

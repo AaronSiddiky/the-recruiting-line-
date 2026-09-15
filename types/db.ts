@@ -65,6 +65,8 @@ export type Company = {
   reached_out: boolean
   /** Contact email, usually captured in the exit interview. */
   email: string | null
+  /** Dial before everything else. Cleared automatically once dialed. */
+  priority: boolean
   created_at: string
   updated_at: string
 }
@@ -140,8 +142,9 @@ export type Database = {
           | 'source'
           | 'reached_out'
           | 'email'
+          | 'priority'
         > &
-          Partial<Pick<Company, 'id' | 'notes' | 'do_not_call' | 'source' | 'reached_out' | 'email'>>
+          Partial<Pick<Company, 'id' | 'notes' | 'do_not_call' | 'source' | 'reached_out' | 'email' | 'priority'>>
       >
       call_sessions: Table<CallSession>
       dial_batches: Table<DialBatch>
