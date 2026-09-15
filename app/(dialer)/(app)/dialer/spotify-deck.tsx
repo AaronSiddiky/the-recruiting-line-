@@ -85,6 +85,7 @@ export function SpotifyDeck() {
   const [home, setHome] = useState<HomeData | null>(null)
   const [view, setView] = useState<View>({ kind: 'home' })
   const [tracks, setTracks] = useState<TrackView[] | null>(null)
+  const [restricted, setRestricted] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult | null>(null)
   const [queue, setQueue] = useState<TrackView[]>([])
@@ -157,7 +158,10 @@ export function SpotifyDeck() {
     let stale = false
     const req =
       view.kind === 'playlist'
-        ? api<{ tracks: TrackView[] }>(`/api/spotify/playlists/${view.playlist.id}/tracks`).then((d) => d.tracks)
+        ? api<{ tracks: TrackView[]; restricted?: boolean }>(`/api/spotify/playlists/${view.playlist.id}/tracks`).then((d) => {
+            if (!stale) setRestricted(!!d.restricted)
+            return d.tracks
+          })
         : api<{ episodes: TrackView[] }>(`/api/spotify/shows/${view.show.id}/episodes`).then((d) => d.episodes)
     req.then((list) => !stale && setTracks(list)).catch(() => !stale && setTracks([]))
     return () => {
@@ -194,6 +198,7 @@ export function SpotifyDeck() {
 
   function open(next: View) {
     setTracks(null)
+    setRestricted(false)
     setQuery('')
     setView(next)
   }
@@ -339,6 +344,8 @@ export function SpotifyDeck() {
                 />
               ) : (
                 <ListView
+                  restricted={restricted}
+                  openUrl={`https://open.spotify.com/playlist/${view.playlist.id}`}
                   title={view.playlist.name}
                   subtitle={[view.playlist.by, view.playlist.tracks != null ? `${view.playlist.tracks} songs` : null].filter(Boolean).join(' · ')}
                   art={<Art src={view.playlist.image} className="size-28 rounded" />}
@@ -563,8 +570,11 @@ function SearchView({ results, active, onPlayTrack, onQueue, onPlayContext, onOp
   )
 }
 
-function ListView({ kind = 'Playlist', title, subtitle, art, tracks, active, busy, onBack, onPlayAll, onPlayTrack, onQueue }: {
+function ListView({ kind = 'Playlist', restricted = false, openUrl, title, subtitle, art, tracks, active, busy, onBack, onPlayAll, onPlayTrack, onQueue }: {
   kind?: string
+  /** Spotify refused to list the contents (a playlist the rep does not own). */
+  restricted?: boolean
+  openUrl?: string
   title: string
   subtitle: string
   art: React.ReactNode
@@ -591,13 +601,28 @@ function ListView({ kind = 'Playlist', title, subtitle, art, tracks, active, bus
         </div>
       </div>
       <div className="mt-4 mb-2">
-        <button type="button" onClick={onPlayAll} disabled={busy || !tracks?.length} aria-label={`Play ${title}`} className="inline-flex size-12 cursor-pointer items-center justify-center rounded-full bg-[#1DB954] text-black hover:scale-105 disabled:opacity-50">
+        <button type="button" onClick={onPlayAll} disabled={busy || (!restricted && !tracks?.length)} aria-label={`Play ${title}`} className="inline-flex size-12 cursor-pointer items-center justify-center rounded-full bg-[#1DB954] text-black hover:scale-105 disabled:opacity-50">
           <Play className="size-5 fill-current" aria-hidden />
         </button>
       </div>
+      {restricted && (
+        <p className="mb-3 max-w-xl rounded-md bg-white/5 px-3 py-2 text-xs text-[#b3b3b3]">
+          Spotify only lets this app list songs in playlists you own. Press play to listen to it here
+          {openUrl && (
+            <>
+              , or{' '}
+              <a href={openUrl} target="_blank" rel="noreferrer" className="text-white underline">
+                open it in Spotify
+              </a>{' '}
+              to browse
+            </>
+          )}
+          . To see it here, copy its songs into a playlist of your own.
+        </p>
+      )}
       <ol className="max-h-[420px] overflow-y-auto pr-1">
         {tracks === null && <li className="py-2 text-xs text-[#b3b3b3]">Loading…</li>}
-        {tracks?.length === 0 && <li className="py-2 text-xs text-[#b3b3b3]">Nothing here.</li>}
+        {tracks?.length === 0 && !restricted && <li className="py-2 text-xs text-[#b3b3b3]">Nothing here.</li>}
         {tracks?.map((t, i) => <Row key={`${t.uri}:${i}`} index={i + 1} track={t} active={t.uri === active} onPlay={() => onPlayTrack(t)} onQueue={() => onQueue(t)} />)}
       </ol>
     </div>

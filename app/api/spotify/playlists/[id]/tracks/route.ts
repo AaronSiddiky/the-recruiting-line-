@@ -27,6 +27,9 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/spotify
     })
   } catch (e) {
     const status = e instanceof SpotifyError ? e.status : 500
+    // Development-mode apps may only read playlists the signed-in user owns;
+    // everything else is 403. Playback still works, so say so rather than fail.
+    if (status === 403) return NextResponse.json({ tracks: [], more: false, restricted: true })
     return NextResponse.json({ error: (e as Error).message }, { status: status === 401 ? 401 : 502 })
   }
 }
