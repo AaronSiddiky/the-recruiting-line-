@@ -8,20 +8,20 @@ alter type call_outcome add value if not exists 'no_answer';
 
 create or replace function public.start_dial_batch(
   p_session uuid,
-  p_agent   uuid,
-  p_limit   integer default 4
+  p_agent uuid,
+  p_limit integer default 4
 )
 returns table (
-  call_id      uuid,
-  batch_id     uuid,
-  company_id   uuid,
+  call_id uuid,
+  batch_id uuid,
+  company_id uuid,
   company_name text,
-  phone        text
+  phone text
 )
 language plpgsql security definer set search_path = public as $$
 declare
   v_batch uuid;
-  v_seq   integer;
+  v_seq integer;
 begin
   select coalesce(max(seq), 0) + 1 into v_seq
     from dial_batches where session_id = p_session;
@@ -53,9 +53,9 @@ begin
             and k.started_at > now() - interval '2 minutes'
        )
      order by
-       (c.next_follow_up is not null) desc,   -- overdue follow-ups first
+       (c.next_follow_up is not null) desc, -- overdue follow-ups first
        c.next_follow_up asc nulls last,
-       c.last_called_at asc nulls first,      -- then never-called
+       c.last_called_at asc nulls first, -- then never-called
        c.created_at asc
      limit p_limit
      for update skip locked

@@ -6,7 +6,7 @@
 -- and is handed to Twilio through a short-lived signed URL.
 
 alter table profiles add column if not exists voicemail_path text;
-alter table calls    add column if not exists voicemail_left_at timestamptz;
+alter table calls add column if not exists voicemail_left_at timestamptz;
 
 insert into storage.buckets (id, name, public)
 values ('voicemails', 'voicemails', false)
