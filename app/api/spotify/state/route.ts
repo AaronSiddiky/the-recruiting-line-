@@ -35,6 +35,7 @@ export async function GET() {
     return NextResponse.json({
       connected: true,
       displayName: connection.displayName,
+      scopesOk: connection.scopesOk,
       isPlaying: player?.is_playing ?? false,
       progressMs: player?.progress_ms ?? 0,
       shuffle: player?.shuffle_state ?? false,
@@ -47,6 +48,6 @@ export async function GET() {
   } catch (e) {
     const status = e instanceof SpotifyError ? e.status : 500
     if (status === 401) return NextResponse.json({ connected: false, expired: true })
-    return NextResponse.json({ connected: true, displayName: connection.displayName, error: (e as Error).message })
+    return NextResponse.json({ connected: true, displayName: connection.displayName, scopesOk: connection.scopesOk, error: (e as Error).message })
   }
 }

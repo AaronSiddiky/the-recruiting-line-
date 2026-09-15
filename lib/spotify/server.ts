@@ -10,7 +10,13 @@ export const SPOTIFY_SCOPES = [
   'playlist-read-private',
   'playlist-read-collaborative',
   'user-read-private',
+  'user-read-recently-played',
+  'user-library-read',
+  'user-top-read',
 ].join(' ')
+
+/** Scopes the home view needs; older sign-ins lack them and must reconnect. */
+export const HOME_SCOPES = ['user-read-recently-played', 'user-library-read', 'user-top-read']
 
 const ACCOUNTS = 'https://accounts.spotify.com'
 const API = 'https://api.spotify.com/v1'
@@ -104,10 +110,12 @@ async function accessToken(userId: string): Promise<string | null> {
 export async function isConnected(userId: string) {
   const { data } = await createAdminClient()
     .from('spotify_tokens')
-    .select('display_name')
+    .select('display_name, scope')
     .eq('user_id', userId)
     .maybeSingle()
-  return data ? { displayName: data.display_name } : null
+  if (!data) return null
+  const granted = new Set((data.scope ?? '').split(' '))
+  return { displayName: data.display_name, scopesOk: HOME_SCOPES.every((s) => granted.has(s)) }
 }
 
 export async function disconnect(userId: string) {
