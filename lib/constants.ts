@@ -51,6 +51,13 @@ export const CALL_OUTCOMES: {
     key: '6',
     tone: 'good',
   },
+  {
+    value: 'not_hiring',
+    label: 'Not hiring ATM',
+    hint: 'No open seat right now — comes back in a month',
+    key: '7',
+    tone: 'warn',
+  },
 ]
 
 export const OUTCOME_LABELS: Record<CallOutcome, string> = Object.fromEntries(

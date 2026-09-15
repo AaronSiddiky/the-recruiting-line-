@@ -8,6 +8,7 @@ export type CallOutcome =
   | 'call_back'
   | 'customer'
   | 'no_answer'
+  | 'not_hiring'
 
 export type CallStatus =
   | 'dialing'

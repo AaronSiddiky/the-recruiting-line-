@@ -20,7 +20,7 @@ export default async function DialerPage() {
       .eq('do_not_call', false)
       .not('phone', 'is', null)
       .or(`next_follow_up.is.null,next_follow_up.lte.${today}`)
-      .or('response.is.null,response.eq.call_back,response.eq.no_answer,response.eq.not_interested'),
+      .or('response.is.null,response.eq.call_back,response.eq.no_answer,response.eq.not_interested,response.eq.not_hiring'),
     supabase.from('profiles').select('voicemail_path').eq('id', user.id).maybeSingle(),
   ])
 

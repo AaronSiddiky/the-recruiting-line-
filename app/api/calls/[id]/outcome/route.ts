@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 
 const bodySchema = z.object({
-  outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer', 'no_answer']),
+  outcome: z.enum(['meeting_booked', 'not_interested', 'wrong_number', 'call_back', 'customer', 'no_answer', 'not_hiring']),
   notes: z.string().max(10_000).optional(),
   nextFollowUp: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   email: z.string().trim().email().max(200).optional(),
@@ -59,7 +59,9 @@ export async function POST(
   // tomorrow; fall back to UTC so the lead never lands in the queue undated.
   if (outcome === 'no_answer') companyPatch.next_follow_up = nextFollowUp ?? daysFromNowUtc(1)
   // "Not interested" is a snooze, not a burial: back in the queue in a month.
-  if (outcome === 'not_interested') companyPatch.next_follow_up = nextFollowUp ?? daysFromNowUtc(30)
+  if (outcome === 'not_interested' || outcome === 'not_hiring') {
+    companyPatch.next_follow_up = nextFollowUp ?? daysFromNowUtc(30)
+  }
   if (email) companyPatch.email = email
   if (Object.keys(companyPatch).length > 0) {
     await supabase.from('companies').update(companyPatch).eq('id', call.company_id)

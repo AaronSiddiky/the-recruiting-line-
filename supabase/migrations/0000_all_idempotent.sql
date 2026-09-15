@@ -25,6 +25,7 @@ do $$ begin
 end $$;
 alter type call_outcome add value if not exists 'customer';
 alter type call_outcome add value if not exists 'no_answer';
+alter type call_outcome add value if not exists 'not_hiring';
 
 -- Machine-recorded result of a dial. Distinct from the human outcome: a call
 -- can be `connected` and still have no outcome (agent skipped the interview).

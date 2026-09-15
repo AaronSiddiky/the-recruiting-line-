@@ -82,7 +82,7 @@ export function ExitInterview({
               ? followUp
               : outcome === 'no_answer'
                 ? daysFromNow(1)
-                : outcome === 'not_interested'
+                : outcome === 'not_interested' || outcome === 'not_hiring'
                   ? monthFromNow()
                   : null,
           email: email.trim() || undefined,
@@ -195,6 +195,12 @@ export function ExitInterview({
             </p>
           )}
 
+          {outcome === 'not_hiring' && (
+            <p className="text-xs text-muted">
+              Seats open up. They come back in the queue in one month.
+            </p>
+          )}
+
           {outcome === 'call_back' && (
             <label className="flex items-center justify-between gap-3">
               <span className="text-xs font-medium text-muted">Call back on</span>
@@ -249,7 +255,7 @@ export function ExitInterview({
 
         <div className="flex items-center justify-between border-t border-border-subtle px-5 py-3">
           <span className="text-xs text-muted-2">
-            {outcome ? 'Press \u2318\u21A9 to save' : 'Press 1\u20136 to pick an outcome'}
+            {outcome ? 'Press \u2318\u21A9 to save' : 'Press 1\u20137 to pick an outcome'}
           </span>
           <Button
             variant="primary"
