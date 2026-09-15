@@ -38,6 +38,9 @@ export async function updateCompany(id: string, patch: unknown) {
   }
 
   const { error } = await supabase.from('companies').update(values).eq('id', id)
+  if (error?.code === '23505') {
+    return { error: 'Another lead already has that name or phone number.' }
+  }
   if (error) return { error: error.message }
 
   revalidatePath('/crm')

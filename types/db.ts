@@ -48,7 +48,8 @@ export type Company = {
   name: string
   city: string | null
   state: string | null
-  phone: string
+  /** E.164. Null for a lead nobody has a number for yet; the dialer skips those. */
+  phone: string | null
   owner_id: string | null
   response: CallOutcome | null
   call_count: number

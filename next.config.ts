@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     // The marketing site and the dialer have separate root layouts, so there is
     // no single layout to compose a 404 from; app/global-not-found.tsx covers both.
     globalNotFound: true,
+    // Lead imports send parsed spreadsheet rows to a server action; a few
+    // thousand companies is well past the 1 MB default.
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
   },
   images: {
     formats: ["image/avif", "image/webp"],

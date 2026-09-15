@@ -3,17 +3,22 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Plus } from 'lucide-react'
 import { updateCompany } from '@/lib/actions/companies'
-import { cn } from '@/lib/utils'
+import { cn, formatPhone } from '@/lib/utils'
 import type { Company, Profile } from '@/types/db'
 
-export type LeadRow = Pick<Company, 'id' | 'name' | 'phone' | 'source' | 'reached_out' | 'owner_id'>
+export type LeadRow = Pick<
+  Company,
+  'id' | 'name' | 'phone' | 'city' | 'state' | 'source' | 'reached_out' | 'call_count' | 'owner_id'
+>
 
 const COLUMNS = [
   { key: 'name', label: 'Company', sortable: true },
+  { key: 'phone', label: 'Phone', sortable: false },
+  { key: 'location', label: 'Location', sortable: true },
   { key: 'source', label: 'Source', sortable: true },
-  { key: 'reached', label: 'Reached out', sortable: true },
+  { key: 'crm', label: 'CRM', sortable: true },
   { key: 'assigned', label: 'Assigned to', sortable: false },
 ] as const
 
@@ -52,11 +57,7 @@ export function LeadsTable({
     startTransition(async () => {
       const res = await updateCompany(id, patch)
       if (res.error) {
-        setError(
-          /reached_out|source/.test(res.error)
-            ? 'The leads columns are missing. Run supabase/migrations/0004_leads.sql in Supabase.'
-            : `Could not save: ${res.error}`,
-        )
+        setError(`Could not save: ${res.error}`)
         router.refresh()
       }
     })
@@ -123,6 +124,14 @@ export function LeadsTable({
                   </Link>
                 </td>
 
+                <td className="tnum border-b border-border-subtle px-4 py-2 whitespace-nowrap text-muted">
+                  {formatPhone(row.phone)}
+                </td>
+
+                <td className="border-b border-border-subtle px-4 py-2 whitespace-nowrap text-muted">
+                  {[row.city, row.state].filter(Boolean).join(', ') || '—'}
+                </td>
+
                 <td className="border-b border-border-subtle px-4 py-2">
                   <SourceCell
                     key={`${row.id}:${row.source ?? ''}`}
@@ -132,7 +141,7 @@ export function LeadsTable({
                 </td>
 
                 <td className="border-b border-border-subtle px-4 py-2">
-                  <ReachedToggle
+                  <CrmCell
                     key={`${row.id}:${row.reached_out}`}
                     lead={row}
                     onChange={(reached_out) => save(row.id, { reached_out })}
@@ -203,38 +212,51 @@ function SourceCell({ lead, onSave }: { lead: LeadRow; onSave: (source: string |
   )
 }
 
-/** Yes/No segmented toggle. Optimistic: flips immediately, the server confirms. */
-function ReachedToggle({ lead, onChange }: { lead: LeadRow; onChange: (value: boolean) => void }) {
-  const [value, setValue] = useState(lead.reached_out)
+/**
+ * A lead joins the CRM once it has been contacted. Calling does that
+ * automatically; this lets a rep add one they reached some other way. A lead
+ * with call history stays in the CRM, since the contact really happened.
+ */
+function CrmCell({ lead, onChange }: { lead: LeadRow; onChange: (value: boolean) => void }) {
+  const [inCrm, setInCrm] = useState(lead.reached_out)
   const set = (next: boolean) => {
-    if (next === value) return
-    setValue(next)
+    setInCrm(next)
     onChange(next)
   }
+
+  if (!inCrm) {
+    return (
+      <button
+        type="button"
+        onClick={() => set(true)}
+        aria-label={`Add ${lead.name} to CRM`}
+        className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border-strong px-2 text-xs font-medium whitespace-nowrap text-foreground hover:bg-surface-2"
+      >
+        <Plus className="size-3" aria-hidden />
+        Add to CRM
+      </button>
+    )
+  }
+
   return (
-    <div role="radiogroup" aria-label={`Reached out to ${lead.name}`} className="inline-flex rounded-md border border-border-strong p-0.5">
-      {[
-        { label: 'Yes', v: true },
-        { label: 'No', v: false },
-      ].map((opt) => (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      <Link
+        href={`/crm?q=${encodeURIComponent(lead.name)}`}
+        className="inline-flex h-6 items-center gap-1 rounded-md bg-good-bg px-2 text-xs font-medium text-good hover:underline"
+      >
+        <Check className="size-3" aria-hidden />
+        In CRM
+      </Link>
+      {lead.call_count === 0 && (
         <button
-          key={opt.label}
           type="button"
-          role="radio"
-          aria-checked={value === opt.v}
-          onClick={() => set(opt.v)}
-          className={cn(
-            'h-6 min-w-10 cursor-pointer rounded px-2 text-xs font-medium transition-colors',
-            value === opt.v
-              ? opt.v
-                ? 'bg-good-bg text-good'
-                : 'bg-surface-2 text-foreground'
-              : 'text-muted-2 hover:text-foreground',
-          )}
+          onClick={() => set(false)}
+          aria-label={`Remove ${lead.name} from CRM`}
+          className={cn('cursor-pointer text-xs text-muted-2 hover:text-bad')}
         >
-          {opt.label}
+          Remove
         </button>
-      ))}
-    </div>
+      )}
+    </span>
   )
 }

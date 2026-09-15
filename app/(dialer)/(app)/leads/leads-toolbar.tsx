@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ImportDialog } from '../crm/import-dialog'
+import { ImportDialog } from './import-dialog'
 import type { Profile } from '@/types/db'
 
 export function LeadsToolbar({
@@ -58,7 +58,7 @@ export function LeadsToolbar({
         <div className="mb-3 flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Leads</h1>
           <span className="tnum text-xs text-muted">
-            {reachedTotal.toLocaleString()} reached out
+            {reachedTotal.toLocaleString()} in CRM
           </span>
         </div>
 
@@ -68,16 +68,16 @@ export function LeadsToolbar({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name or source"
+              placeholder="Search name, phone or source"
               aria-label="Search leads"
               className="h-8 w-56 rounded-md border border-border-strong bg-background pr-2 pl-7 text-sm focus:outline-2 focus:outline-accent"
             />
           </div>
 
-          <select aria-label="Filter by reached out" value={params.get('reached') ?? ''} onChange={setParam('reached')} className={selectClass}>
-            <option value="">Reached out: any</option>
-            <option value="yes">Reached out</option>
-            <option value="no">Not reached out</option>
+          <select aria-label="Filter by CRM" value={params.get('reached') ?? ''} onChange={setParam('reached')} className={selectClass}>
+            <option value="">All leads</option>
+            <option value="no">Not in CRM yet</option>
+            <option value="yes">In CRM</option>
           </select>
 
           <select aria-label="Filter by assignee" value={params.get('assigned') ?? ''} onChange={setParam('assigned')} className={selectClass}>
@@ -103,7 +103,7 @@ export function LeadsToolbar({
             </span>
             <Button onClick={() => setImportOpen(true)}>
               <Upload className="size-3.5" aria-hidden />
-              Import CSV
+              Import
             </Button>
           </div>
         </div>

@@ -87,7 +87,7 @@ export function CrmTable({
         <div className="text-center">
           <p className="text-sm font-medium">No companies match.</p>
           <p className="mt-1 text-xs text-muted">
-            Clear the filters, or import a lead list to get started.
+            A company lands here once it has been called, or when you add it from Leads.
           </p>
         </div>
       </div>

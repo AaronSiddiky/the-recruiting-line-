@@ -18,6 +18,7 @@ export default async function DialerPage() {
       .from('companies')
       .select('id', { count: 'exact', head: true })
       .eq('do_not_call', false)
+      .not('phone', 'is', null)
       .or(`next_follow_up.is.null,next_follow_up.lte.${today}`)
       .or('response.is.null,response.eq.call_back,response.eq.no_answer,response.eq.not_interested'),
     supabase.from('profiles').select('voicemail_path').eq('id', user.id).maybeSingle(),

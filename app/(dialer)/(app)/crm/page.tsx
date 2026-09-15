@@ -49,11 +49,16 @@ export default async function CrmPage(props: PageProps<'/crm'>) {
     .select('*, owner:profiles!companies_owner_id_fkey(id, full_name)', {
       count: 'exact',
     })
+    // The CRM is the part of Leads that has been contacted: called, or added by hand.
+    .eq('reached_out', true)
 
   if (q) {
     // Match either the company name or a phone number typed any which way.
+    // Commas and parentheses are PostgREST filter syntax; a name like
+    // "Modigent, LLC" would otherwise break the query.
+    const safe = q.replace(/[,()]/g, ' ')
     const digits = q.replace(/\D/g, '')
-    const filters = [`name.ilike.%${q}%`]
+    const filters = [`name.ilike.%${safe}%`]
     if (digits.length >= 3) filters.push(`phone.ilike.%${digits}%`)
     query = query.or(filters.join(','))
   }

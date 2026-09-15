@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { Search, Upload, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { ImportDialog } from './import-dialog'
+import Link from 'next/link'
+import { Search, Loader2 } from 'lucide-react'
 import { CALL_OUTCOMES } from '@/lib/constants'
 
 export function CrmToolbar({ total }: { total: number }) {
@@ -12,7 +11,6 @@ export function CrmToolbar({ total }: { total: number }) {
   const pathname = usePathname()
   const params = useSearchParams()
   const [pending, startTransition] = useTransition()
-  const [importOpen, setImportOpen] = useState(false)
   const urlQuery = params.get('q') ?? ''
   const [search, setSearch] = useState(urlQuery)
   const [syncedQuery, setSyncedQuery] = useState(urlQuery)
@@ -116,14 +114,14 @@ export function CrmToolbar({ total }: { total: number }) {
               `${total.toLocaleString()} ${total === 1 ? 'company' : 'companies'}`
             )}
           </span>
-          <Button onClick={() => setImportOpen(true)}>
-            <Upload className="size-3.5" aria-hidden />
-            Import CSV
-          </Button>
+          <Link
+            href="/leads?reached=no"
+            className="inline-flex h-8 items-center rounded-md border border-border-strong px-3 text-sm font-medium hover:bg-surface-2"
+          >
+            Add from Leads
+          </Link>
         </div>
       </div>
-
-      {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
     </>
   )
 }

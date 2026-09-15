@@ -6,8 +6,9 @@ const PAGE_SIZE = 100
 
 const SORTABLE = {
   name: 'name',
+  location: 'city',
   source: 'source',
-  reached: 'reached_out',
+  crm: 'reached_out',
 } as const
 
 export default async function LeadsPage(props: PageProps<'/leads'>) {
@@ -29,13 +30,16 @@ export default async function LeadsPage(props: PageProps<'/leads'>) {
 
   let query = supabase
     .from('companies')
-    .select('id, name, phone, source, reached_out, owner_id', { count: 'exact' })
+    .select('id, name, phone, city, state, source, reached_out, call_count, owner_id', { count: 'exact' })
 
   if (q) {
     // Commas and parentheses are PostgREST filter syntax; strip them so a
     // search like "A&K, Inc." can't break the query.
     const safe = q.replace(/[,()]/g, ' ')
-    query = query.or(`name.ilike.%${safe}%,source.ilike.%${safe}%`)
+    const digits = q.replace(/\D/g, '')
+    const filters = [`name.ilike.%${safe}%`, `source.ilike.%${safe}%`]
+    if (digits.length >= 3) filters.push(`phone.ilike.%${digits}%`)
+    query = query.or(filters.join(','))
   }
   if (reached === 'yes') query = query.eq('reached_out', true)
   if (reached === 'no') query = query.eq('reached_out', false)
@@ -65,7 +69,7 @@ export default async function LeadsPage(props: PageProps<'/leads'>) {
         <div className="m-4 rounded-md border border-bad-bg bg-bad-bg px-3 py-2 text-sm text-bad">
           Could not load leads: {error.message}
           {/column .* does not exist/.test(error.message) &&
-            ' — run supabase/migrations/0004_leads.sql in the Supabase SQL editor.'}
+            ' — run the latest file in supabase/migrations in the Supabase SQL editor.'}
         </div>
       ) : (
         <LeadsTable

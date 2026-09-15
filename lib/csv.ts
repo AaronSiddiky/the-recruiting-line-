@@ -54,6 +54,12 @@ export function parseCsv(text: string): string[][] {
 const HEADER_ALIASES: Record<string, string> = {
   company: 'name',
   companyname: 'name',
+  companynamelatinalphabet: 'name', // Orbis
+  business: 'name',
+  businessname: 'name',
+  citylatinalphabet: 'city', // Orbis
+  mainphone: 'phone',
+  phone1: 'phone',
   name: 'name',
   account: 'name',
   city: 'city',
