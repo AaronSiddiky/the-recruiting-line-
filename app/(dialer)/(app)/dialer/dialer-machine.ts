@@ -98,6 +98,7 @@ export type DialerAction =
   | { type: 'WRAPUP_DONE' }
   | { type: 'RETURN_TO_READY'; notice: string | null }
   | { type: 'ERROR'; message: string | null }
+  | { type: 'SESSION_READY_NOTICE'; notice: string }
   | { type: 'DISMISS_NOTICE'; id?: number }
 
 export const initialDialerState: DialerState = {
@@ -500,6 +501,9 @@ export function dialerReducer(state: DialerState, action: DialerAction): DialerS
 
     case 'ERROR':
       return { ...state, error: action.message }
+
+    case 'SESSION_READY_NOTICE':
+      return { ...state, phase: 'ready', activeIds: [], liveCallId: null, settledAt: null, notice: makeNotice(state, 'warn', action.notice) }
 
     case 'DISMISS_NOTICE':
       if (!state.notice || (action.id != null && action.id !== state.notice.id)) return state

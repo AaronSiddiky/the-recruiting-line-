@@ -5,6 +5,7 @@ import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { env } from '@/lib/env'
 import { toE164, formatPhone } from '@/lib/utils'
 import { DIAL_TIMEOUT_SECONDS } from '@/lib/constants'
+import { availableLines } from '@/lib/twilio/budget'
 
 /**
  * Dial one number the agent typed by hand.
@@ -99,6 +100,14 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: `${company.name} is marked do not call.` },
       { status: 409 },
+    )
+  }
+
+  const budget = await availableLines()
+  if (budget.available < 1) {
+    return NextResponse.json(
+      { error: `Twilio's call limit (${budget.cap} at once, softphones included) is full right now. Try again in a moment.` },
+      { status: 429 },
     )
   }
 

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { env } from '@/lib/env'
 import { withinCallingHours } from '@/lib/utils'
+import { availableLines } from '@/lib/twilio/budget'
 import { DIAL_TIMEOUT_SECONDS, DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
 export type BatchLine = {
@@ -66,8 +67,13 @@ export async function POST(request: Request) {
   }
 
   const perBatch = session.lines_per_batch ?? DEFAULT_LINES_PER_BATCH
-  // A top-up asks for fewer lines than a full batch; never more.
-  const limit = Math.max(1, Math.min(perBatch, Math.floor(Number(wanted) || perBatch)))
+  // A top-up asks for fewer lines than a full batch; never more, and never
+  // more than Twilio will accept across the whole account right now.
+  const budget = await availableLines()
+  const limit = Math.min(perBatch, Math.floor(Number(wanted) || perBatch), budget.available)
+  if (limit < 1) {
+    return NextResponse.json({ lines: [], capped: true, cap: budget.cap, agents: budget.agents, inFlight: budget.inFlight })
+  }
 
   const { data: reserved, error } = await admin.rpc('start_dial_batch', {
     p_session: sessionId,
@@ -178,5 +184,7 @@ export async function POST(request: Request) {
     lines,
     skippedForHours: skipped.length,
     exhausted: false,
+    capped: limit < Math.min(perBatch, Math.floor(Number(wanted) || perBatch)),
+    cap: budget.cap,
   })
 }

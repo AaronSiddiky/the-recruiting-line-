@@ -29,6 +29,9 @@ type BatchResponse = {
   skippedForHours?: number
   exhausted?: boolean
   busy?: boolean
+  /** Twilio's concurrent-call cap left no room for (all of) the requested lines. */
+  capped?: boolean
+  cap?: number
 }
 
 const OFFLINE_AGENT: AgentAudio = { line: 'offline', muted: false, warnings: [] }
@@ -215,6 +218,13 @@ export function useDialer() {
       dispatch({ type: 'DIAL_REQUESTED', mode: 'batch' })
       try {
         const result = await postJson<BatchResponse>('/api/session/batch', { sessionId: id })
+        if (result.capped && !result.lines?.length) {
+          dispatch({
+            type: 'SESSION_READY_NOTICE',
+            notice: `Twilio's call limit (${result.cap ?? 4} calls at once, including each rep's own line) is full. Waiting for a line to free up.`,
+          })
+          return
+        }
         if (result.exhausted || !result.lines?.length) {
           queueDryRef.current = true
           dispatch({ type: 'QUEUE_EXHAUSTED' })
@@ -394,6 +404,7 @@ export function useDialer() {
         const result = await postJson<BatchResponse>('/api/session/batch', { sessionId, limit: needed })
         const current = stateRef.current
         if (current.sessionId !== sessionId || current.phase !== 'dialing') return
+        if (result.capped && !result.lines?.length) return // retried on the next change
         if (result.exhausted || !result.lines?.length) {
           queueDryRef.current = true
           return
