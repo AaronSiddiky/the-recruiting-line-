@@ -36,11 +36,18 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient()
-  const { data: session } = await admin
+  const { data: session, error: sessionError } = await admin
     .from('call_sessions')
     .select('id, agent_id, status, conference_name, lines_per_batch, live_call_id')
     .eq('id', sessionId)
     .maybeSingle()
+
+  if (sessionError && /live_call_id/.test(sessionError.message)) {
+    return NextResponse.json(
+      { error: 'Database is behind the app: run supabase/migrations/0018_continuous_dialing.sql in the Supabase SQL editor.' },
+      { status: 500 },
+    )
+  }
 
   if (!session || session.agent_id !== user.id) {
     return NextResponse.json({ error: 'Not your session.' }, { status: 403 })
