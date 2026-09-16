@@ -11,8 +11,8 @@ export const CALL_OUTCOMES: {
 }[] = [
   {
     value: 'meeting_booked',
-    label: 'Meeting booked',
-    hint: 'They agreed to a time',
+    label: 'Interested',
+    hint: 'They want to hear more — shows up on the Interested tab',
     key: '1',
     tone: 'good',
   },
