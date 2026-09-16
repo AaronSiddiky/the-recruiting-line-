@@ -2,10 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, Phone, Table2, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, Handshake, Phone, Table2, Users, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const ICONS: Record<string, LucideIcon> = { leads: Users, crm: Table2, dialer: Phone, stats: BarChart3 }
+const ICONS: Record<string, LucideIcon> = { leads: Users, crm: Table2, dialer: Phone, clients: Handshake, stats: BarChart3 }
 
 export function NavLink({
   href,

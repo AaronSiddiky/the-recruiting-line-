@@ -69,6 +69,12 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
   if (range.days) recQ = recQ.gte('started_at', sinceIso(range.days))
   const { data: recordings } = await recQ
 
+  // Signed clients, credited to whoever won the account. Not time-ranged: a
+  // signed contract stays won.
+  const { data: clientRows } = await supabase.from('clients').select('won_by')
+  const clientsBy = new Map<string, number>()
+  for (const c of clientRows ?? []) if (c.won_by) clientsBy.set(c.won_by, (clientsBy.get(c.won_by) ?? 0) + 1)
+
   const reps = (profiles ?? []).map((p) => {
     const mine = rows.filter((r) => r.agent_id === p.id)
     return {
@@ -78,12 +84,14 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
       pickups: mine.filter(isPickup).length,
       // A company is one customer no matter how many calls it took.
       customers: new Set(mine.filter((r) => r.outcome === 'customer').map((r) => r.company_id)).size,
+      clients: clientsBy.get(p.id) ?? 0,
     }
   })
   const team = {
     calls: rows.filter(isCall).length,
     pickups: rows.filter(isPickup).length,
     customers: new Set(rows.filter((r) => r.outcome === 'customer').map((r) => r.company_id)).size,
+    clients: (clientRows ?? []).length,
   }
 
   return (
@@ -123,6 +131,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
                   <th className="px-4 py-2 text-right font-medium">Calls</th>
                   <th className="px-4 py-2 text-right font-medium">Picked up</th>
                   <th className="px-4 py-2 text-right font-medium">Customers</th>
+                  <th className="px-4 py-2 text-right font-medium">Clients signed</th>
                   <th className="px-4 py-2 text-right font-medium">Conversion</th>
                 </tr>
               </thead>
@@ -133,6 +142,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
                     <Num value={r.calls} />
                     <Num value={r.pickups} sub={pct(r.pickups, r.calls)} />
                     <Num value={r.customers} good={r.customers > 0} />
+                    <Num value={r.clients} good={r.clients > 0} />
                     <Rate n={r.customers} d={r.pickups} />
                   </tr>
                 ))}
@@ -141,6 +151,7 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
                   <Num value={team.calls} bold />
                   <Num value={team.pickups} sub={pct(team.pickups, team.calls)} bold />
                   <Num value={team.customers} good={team.customers > 0} bold />
+                  <Num value={team.clients} good={team.clients > 0} bold />
                   <Rate n={team.customers} d={team.pickups} bold />
                 </tr>
               </tbody>
@@ -150,7 +161,8 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
             Counting from {new Date(STATS_SINCE).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.
             Since Sep 15, 2026, Calls counts one per logged outcome and Picked up is every outcome
             except &ldquo;No answer&rdquo;; earlier calls keep the original per-line count. Customers are companies marked &ldquo;Became a
-            customer&rdquo;. Conversion is customers divided by calls picked up.
+            customer&rdquo;. Clients signed is every signed contract on the Clients page, credited to
+            whoever won it, all time. Conversion is customers divided by calls picked up.
           </p>
 
           <h2 className="mt-8 mb-1 text-sm font-semibold">Recordings</h2>

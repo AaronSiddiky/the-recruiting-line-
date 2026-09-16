@@ -100,6 +100,42 @@ export type SpotifyToken = {
   updated_at: string
 }
 
+export type ClientStatus = 'active' | 'paused' | 'ended'
+export type TouchChannel = 'call' | 'email' | 'text' | 'meeting' | 'other'
+
+/** A company that signed. Contract terms, who won it, and the contact. */
+export type Client = {
+  id: string
+  company_id: string
+  won_by: string | null
+  status: ClientStatus
+  contact_name: string | null
+  contact_title: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  signed_at: string | null
+  fee_cents: number | null
+  fee_note: string | null
+  guarantee_days: number | null
+  payment_terms: string | null
+  role_brief: string | null
+  contract_path: string | null
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export type ClientTouchpoint = {
+  id: string
+  client_id: string
+  user_id: string | null
+  at: string
+  channel: TouchChannel
+  summary: string
+  next_follow_up: string | null
+  created_at: string
+}
+
 export type Call = {
   id: string
   company_id: string
@@ -158,6 +194,8 @@ export type Database = {
       >
       call_sessions: Table<CallSession>
       spotify_tokens: Table<SpotifyToken>
+      clients: Table<Client>
+      client_touchpoints: Table<ClientTouchpoint>
       dial_batches: Table<DialBatch>
       calls: Table<Call>
     }

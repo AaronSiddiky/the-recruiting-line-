@@ -7,19 +7,21 @@ import { formatPhone } from '@/lib/utils'
 import { CompanyHeaderFields } from './header-fields'
 import { CallHistory } from './call-history'
 import { DeleteCompanyButton } from './delete-button'
+import { MakeClientButton } from './make-client-button'
 import type { Call, CompanyRow, Profile } from '@/types/db'
 
 export default async function CompanyPage(props: PageProps<'/companies/[id]'>) {
   const { id } = await props.params
   const supabase = await createClient()
 
-  const [{ data: company }, { data: profiles }] = await Promise.all([
+  const [{ data: company }, { data: profiles }, { data: clientRow }] = await Promise.all([
     supabase
       .from('companies')
       .select('*, owner:profiles!companies_owner_id_fkey(id, full_name)')
       .eq('id', id)
       .maybeSingle(),
     supabase.from('profiles').select('id, full_name').order('full_name'),
+    supabase.from('clients').select('id').eq('company_id', id).maybeSingle(),
   ])
 
   if (!company) notFound()
@@ -71,6 +73,7 @@ export default async function CompanyPage(props: PageProps<'/companies/[id]'>) {
 
         <div className="flex items-center gap-3">
           <OutcomeBadge outcome={row.response} />
+          <MakeClientButton companyId={row.id} clientId={clientRow?.id ?? null} />
           <DeleteCompanyButton id={row.id} name={row.name} callCount={row.call_count} />
         </div>
       </div>

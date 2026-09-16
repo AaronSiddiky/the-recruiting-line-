@@ -76,6 +76,8 @@ export const config = {
     '/crm/:path*',
     '/dialer/:path*',
     '/stats/:path*',
+    '/clients/:path*',
+    '/api/clients/:path*',
     '/companies/:path*',
     '/lead-list/:path*',
     '/api/calls/:path*',
