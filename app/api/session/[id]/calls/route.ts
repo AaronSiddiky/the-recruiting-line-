@@ -4,12 +4,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient } from '@/lib/twilio/client'
 
 /**
- * A leg Twilio has not even started ringing 45 s after we created it is stuck
- * in Twilio's outbound queue. Left alone it dials minutes later, when the rep
- * is on another call or gone, and every such leg holds up the ones behind it.
- * So it is cancelled at Twilio as well as here, and marked `canceled` (not a
- * real dial) so the company stays eligible and nothing is counted.
+ * A leg still "dialing" 8 s after creation gets its status checked at Twilio.
+ * Twilio rejects calls over the account's concurrent-call cap (error 10004)
+ * asynchronously and sends no webhook for them, so without this check the
+ * line sits dead. A rejected or still-queued-too-long leg is cancelled at
+ * Twilio as well as here and marked `canceled` (not a real dial), so the
+ * company stays eligible and nothing is counted.
  */
+const CHECK_AFTER_MS = 8_000
 const NEVER_RANG_MS = 45_000
 /** A leg that did ring but never reached a final state (dial timeout is 25 s). */
 const STALE_RING_MS = 3 * 60_000
@@ -48,30 +50,39 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/session
     void supabase.from('call_sessions').update({ last_seen_at: nowIso }).eq('id', id).then(() => undefined)
   }
   const admin = createAdminClient()
-  const { data: neverRang } = await admin
+  const { data: pending } = await admin
     .from('calls')
-    .select('id, call_sid, notes')
+    .select('id, call_sid, notes, started_at')
     .eq('session_id', id)
     .eq('status', 'dialing')
-    .lt('started_at', new Date(Date.now() - NEVER_RANG_MS).toISOString())
-  if (neverRang?.length) {
-    await Promise.allSettled(
-      neverRang
-        .filter((c) => c.call_sid)
-        .map((c) => twilioClient().calls(c.call_sid!).update({ status: 'completed' }).catch(() => undefined)),
-    )
-    for (const c of neverRang) {
-      await admin
-        .from('calls')
-        .update({
-          status: 'canceled',
-          ended_at: nowIso,
-          notes: [c.notes, 'Twilio never started dialing within 45s; cancelled so the company can be tried again.']
-            .filter(Boolean)
-            .join(' · '),
-        })
-        .eq('id', c.id)
+    .lt('started_at', new Date(Date.now() - CHECK_AFTER_MS).toISOString())
+  let rejected = 0
+  for (const c of pending ?? []) {
+    const age = Date.now() - new Date(c.started_at).getTime()
+    let reason: string | null = null
+    if (c.call_sid) {
+      const twilioStatus = await twilioClient()
+        .calls(c.call_sid)
+        .fetch()
+        .then((call) => call.status)
+        .catch(() => null)
+      if (twilioStatus === 'failed') {
+        reason = 'Twilio rejected this call: account concurrent-call limit reached (error 10004).'
+        rejected++
+      } else if (twilioStatus === 'busy' || twilioStatus === 'no-answer' || twilioStatus === 'canceled') {
+        reason = `Twilio reported ${twilioStatus}; the callback never arrived.`
+      } else if (age > NEVER_RANG_MS) {
+        reason = 'Twilio never started dialing within 45s; cancelled so the company can be tried again.'
+        await twilioClient().calls(c.call_sid).update({ status: 'completed' }).catch(() => undefined)
+      }
+    } else if (age > NEVER_RANG_MS) {
+      reason = 'Call was never created at Twilio.'
     }
+    if (!reason) continue
+    await admin
+      .from('calls')
+      .update({ status: 'canceled', ended_at: nowIso, notes: [c.notes, reason].filter(Boolean).join(' · ') })
+      .eq('id', c.id)
   }
   await admin
     .from('calls')
@@ -91,7 +102,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/session
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json(
-    { sessionStatus: session.status, calls: calls ?? [] },
+    { sessionStatus: session.status, calls: calls ?? [], rejectedByTwilio: rejected },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 }

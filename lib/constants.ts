@@ -90,8 +90,12 @@ export const LOSING_LEG_BEHAVIOR: 'hangup' | 'whisper' = 'hangup'
 export const LOSING_LEG_WHISPER =
   "Sorry about that, we've got a bad connection. We'll try you back shortly."
 
-/** How many lines the dialer opens per batch. */
-export const DEFAULT_LINES_PER_BATCH = 4
+/**
+ * How many lines the dialer keeps out at once. Twilio caps concurrent calls
+ * per account (error 10004), and each rep's own softphone leg counts too, so
+ * this must stay below (limit - reps). Override with LINES_PER_BATCH.
+ */
+export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.env.LINES_PER_BATCH) || 4))
 
 /** Ring for this long before giving up on a leg. */
 export const DIAL_TIMEOUT_SECONDS = 25

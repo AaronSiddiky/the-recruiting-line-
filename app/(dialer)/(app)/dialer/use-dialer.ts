@@ -95,8 +95,16 @@ export function useDialer() {
     try {
       const response = await fetch(`/api/session/${id}/calls`, { cache: 'no-store' })
       if (!response.ok) throw new Error(String(response.status))
-      const data = (await response.json()) as { calls: CallRow[] }
+      const data = (await response.json()) as { calls: CallRow[]; rejectedByTwilio?: number }
       dispatch({ type: 'ROWS', rows: data.calls, now: Date.now() })
+      if (data.rejectedByTwilio) {
+        dispatch({
+          type: 'ERROR',
+          message:
+            'Twilio is rejecting calls: the account\u2019s concurrent-call limit is reached (error 10004). ' +
+            'Raise the limit in the Twilio Console, or lower LINES_PER_BATCH.',
+        })
+      }
       setSync((current) => (current === 'offline' || current === 'connecting' ? 'polling' : current))
     } catch {
       setSync('offline')
