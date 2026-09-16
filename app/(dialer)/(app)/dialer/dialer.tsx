@@ -403,8 +403,9 @@ function IdleState({ queueSize }: { queueSize: number }) {
         ) : (
           <>
             {queueSize.toLocaleString()} {queueSize === 1 ? 'lead is' : 'leads are'} ready.
-            Starting opens {DEFAULT_LINES_PER_BATCH} lines at once, and the first person to pick
-            up is connected to you with a tone.
+            {DEFAULT_LINES_PER_BATCH === 1
+              ? 'Starting dials one company at a time and moves to the next the moment a call ends. A pickup connects to you with a tone.'
+              : `Starting opens ${DEFAULT_LINES_PER_BATCH} lines at once, and the first person to pick up is connected to you with a tone.`}
           </>
         )}
       </p>
