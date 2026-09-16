@@ -84,6 +84,8 @@ export type DialerAction =
   | { type: 'DIAL_REQUESTED'; mode: DialMode }
   | {
       type: 'LINES_STARTED'
+      /** Top-up: keep the lines still ringing and add these beside them. */
+      append?: boolean
       mode: DialMode
       lines: LineMeta[]
       nowMs: number
@@ -429,8 +431,12 @@ export function dialerReducer(state: DialerState, action: DialerAction): DialerS
           mode: action.mode,
           meta,
           rows,
-          activeIds: action.lines.map((line) => line.callId),
-          batchNumber: action.mode === 'batch' ? state.batchNumber + 1 : state.batchNumber,
+          activeIds: action.append
+            ? [...state.activeIds.filter((id) => !isDone(rows[id])), ...action.lines.map((line) => line.callId)]
+            : action.lines.map((line) => line.callId),
+          batchNumber: action.mode === 'batch' && !action.append ? state.batchNumber + 1 : state.batchNumber,
+          // New lines are out again, so the batch is no longer settled.
+          settledAt: action.append ? null : state.settledAt,
           notice:
             skipped > 0
               ? makeNotice(

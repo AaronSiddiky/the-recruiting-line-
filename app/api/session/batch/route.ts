@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
 
-  const { sessionId } = (await request.json()) as { sessionId?: string }
+  const { sessionId, limit: wanted } = (await request.json()) as { sessionId?: string; limit?: number }
   if (!sessionId) {
     return NextResponse.json({ error: 'sessionId is required.' }, { status: 400 })
   }
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient()
   const { data: session } = await admin
     .from('call_sessions')
-    .select('id, agent_id, status, conference_name, lines_per_batch')
+    .select('id, agent_id, status, conference_name, lines_per_batch, live_call_id')
     .eq('id', sessionId)
     .maybeSingle()
 
@@ -49,10 +49,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Session already ended.' }, { status: 409 })
   }
 
+  // Never fan out while the rep is on a call: a pickup now would lose the
+  // race and hang up on a real person for nothing.
+  if (session.live_call_id) {
+    const { data: live } = await admin.from('calls').select('ended_at').eq('id', session.live_call_id).maybeSingle()
+    if (live && !live.ended_at) {
+      return NextResponse.json({ error: 'A call is in progress.', busy: true }, { status: 409 })
+    }
+  }
+
+  const perBatch = session.lines_per_batch ?? DEFAULT_LINES_PER_BATCH
+  // A top-up asks for fewer lines than a full batch; never more.
+  const limit = Math.max(1, Math.min(perBatch, Math.floor(Number(wanted) || perBatch)))
+
   const { data: reserved, error } = await admin.rpc('start_dial_batch', {
     p_session: sessionId,
     p_agent: user.id,
-    p_limit: session.lines_per_batch ?? DEFAULT_LINES_PER_BATCH,
+    p_limit: limit,
   })
 
   if (error) {

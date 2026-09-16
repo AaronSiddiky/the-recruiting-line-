@@ -3,20 +3,23 @@ import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
- * Hang up every other leg in the batch the instant we have a winner.
+ * Hang up every other ringing leg in the session the instant we have a winner.
+ *
+ * Session-wide, not batch-wide: with continuous top-ups, legs from several
+ * batches ring at once and all of them must drop when one prospect answers.
  *
  * Runs after the TwiML response is flushed -- the winning prospect must not
  * wait on three REST round-trips before they hear the agent. Failures are
  * swallowed per leg: a leg that already ended returns a 20009 and that is a
  * normal outcome of the race, not an error worth failing the call over.
  */
-export async function hangUpLosers(batchId: string, winnerCallId: string) {
+export async function hangUpOthers(sessionId: string, winnerCallId: string) {
   const admin = createAdminClient()
 
   const { data: losers } = await admin
     .from('calls')
     .select('id, call_sid')
-    .eq('batch_id', batchId)
+    .eq('session_id', sessionId)
     .neq('id', winnerCallId)
     .in('status', ['dialing', 'ringing'])
 
@@ -42,6 +45,16 @@ export async function hangUpLosers(batchId: string, winnerCallId: string) {
           .catch(() => undefined),
       ),
   )
+}
+
+/** Batch-keyed wrapper for callers that only know the batch. */
+export async function hangUpLosers(batchId: string, winnerCallId: string) {
+  const { data: batch } = await createAdminClient()
+    .from('dial_batches')
+    .select('session_id')
+    .eq('id', batchId)
+    .maybeSingle()
+  if (batch?.session_id) await hangUpOthers(batch.session_id, winnerCallId)
 }
 
 /**

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Call as TwilioCall, Device as TwilioDevice } from '@twilio/voice-sdk'
 import { createClient } from '@/lib/supabase/client'
+import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 import { playCue, primeAudio } from './audio-cues'
 import {
   describeLine,
@@ -27,6 +28,7 @@ type BatchResponse = {
   lines?: LineMeta[]
   skippedForHours?: number
   exhausted?: boolean
+  busy?: boolean
 }
 
 const OFFLINE_AGENT: AgentAudio = { line: 'offline', muted: false, warnings: [] }
@@ -196,12 +198,17 @@ export function useDialer() {
 
   // --- Dialing ----------------------------------------------------------------
 
+  const linesPerBatchRef = useRef(DEFAULT_LINES_PER_BATCH)
+  const queueDryRef = useRef(false)
+  const toppingUpRef = useRef(false)
+
   const startBatch = useCallback(
     async (id: string) => {
       dispatch({ type: 'DIAL_REQUESTED', mode: 'batch' })
       try {
         const result = await postJson<BatchResponse>('/api/session/batch', { sessionId: id })
         if (result.exhausted || !result.lines?.length) {
+          queueDryRef.current = true
           dispatch({ type: 'QUEUE_EXHAUSTED' })
           return
         }
@@ -224,9 +231,9 @@ export function useDialer() {
     endingRef.current = false
     dispatch({ type: 'SESSION_CONNECTING' })
     setSync('connecting')
-    let session: { sessionId: string }
+    let session: { sessionId: string; linesPerBatch?: number }
     try {
-      session = await postJson<{ sessionId: string }>('/api/session/start', {})
+      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', {})
     } catch (e) {
       const conflict = e instanceof SessionConflict ? e : null
       if (!conflict) throw e
@@ -237,8 +244,10 @@ export function useDialer() {
           'Each rep should sign in with their own account.\n\nTake over anyway?',
       )
       if (!takeOver) throw new Error('Already dialing in another window. End that session first, or use your own login.')
-      session = await postJson<{ sessionId: string }>('/api/session/start', { force: true })
+      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { force: true })
     }
+    linesPerBatchRef.current = session.linesPerBatch ?? DEFAULT_LINES_PER_BATCH
+    queueDryRef.current = false
     await connectSoftphone(session.sessionId)
     dispatch({ type: 'SESSION_READY', sessionId: session.sessionId })
     return session.sessionId
@@ -359,9 +368,50 @@ export function useDialer() {
   // --- Transitions with side effects -----------------------------------------
 
   // Every line finished: a manual call hands back the pad, a batch fans out
+  // Continuous dialing: as soon as a line finishes without a conversation,
+  // replace it, so the rep never waits for a whole batch to die. Stops once
+  // the queue is dry; the batch then settles the normal way.
+  useEffect(() => {
+    if (phase !== 'dialing' || mode !== 'batch' || !sessionId || state.liveCallId) return
+    if (queueDryRef.current || toppingUpRef.current) return
+    const lines = selectLines(state)
+    if (lines.length === 0) return
+    const inFlight = lines.filter((line) => !line.endedAt && (line.status === 'dialing' || line.status === 'ringing')).length
+    const needed = linesPerBatchRef.current - inFlight
+    if (needed <= 0) return
+
+    toppingUpRef.current = true
+    void (async () => {
+      try {
+        const result = await postJson<BatchResponse>('/api/session/batch', { sessionId, limit: needed })
+        const current = stateRef.current
+        if (current.sessionId !== sessionId || current.phase !== 'dialing') return
+        if (result.exhausted || !result.lines?.length) {
+          queueDryRef.current = true
+          return
+        }
+        dispatch({
+          type: 'LINES_STARTED',
+          mode: 'batch',
+          append: true,
+          lines: result.lines,
+          skippedForHours: result.skippedForHours,
+          nowMs: Date.now(),
+        })
+        void refresh(sessionId)
+      } catch {
+        // A refused top-up (call in progress, network) is retried on the next change.
+      } finally {
+        toppingUpRef.current = false
+      }
+    })()
+  }, [state, phase, mode, sessionId, refresh])
+
   // again. A beat first, so the final state of each line is readable.
   useEffect(() => {
     if (settledAt == null || !sessionId) return
+    // A top-up is already replacing the finished lines; let it land.
+    if (toppingUpRef.current) return
     const timer = setTimeout(() => {
       if (mode === 'manual') {
         const line = selectLines(stateRef.current)[0]

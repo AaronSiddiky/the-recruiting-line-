@@ -81,6 +81,8 @@ export type CallSession = {
   ended_at: string | null
   /** Refreshed by the dialer's polling while the tab is open. */
   last_seen_at: string
+  /** The one call bridged to the agent right now; frees itself once that call ends. */
+  live_call_id: string | null
 }
 
 export type DialBatch = {
