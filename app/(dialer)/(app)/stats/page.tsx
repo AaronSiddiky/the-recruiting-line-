@@ -87,6 +87,18 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
       clients: clientsBy.get(p.id) ?? 0,
     }
   })
+  // Calls per day per rep, newest first, using the same counting rule.
+  const perDay = new Map<string, Map<string, number>>()
+  for (const r of rows) {
+    if (!isCall(r) || !r.agent_id) continue
+    const k = dayKey(r.started_at)
+    const m = perDay.get(k) ?? new Map<string, number>()
+    m.set(r.agent_id, (m.get(r.agent_id) ?? 0) + 1)
+    perDay.set(k, m)
+  }
+  const days = [...perDay.keys()].sort().reverse()
+  const today = dayKey(new Date().toISOString())
+
   const team = {
     calls: rows.filter(isCall).length,
     pickups: rows.filter(isPickup).length,
@@ -165,6 +177,44 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
             whoever won it, all time. Conversion is customers divided by calls picked up.
           </p>
 
+          <h2 className="mt-8 mb-1 text-sm font-semibold">Calls per day</h2>
+          <p className="mb-3 text-xs text-muted">Counted the same way as the totals above. Days in Eastern time.</p>
+          {days.length === 0 ? (
+            <p className="text-sm text-muted">No calls in this range.</p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border-subtle">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-surface text-left text-xs text-muted">
+                    <th className="px-4 py-2 font-medium">Day</th>
+                    {reps.map((r) => (
+                      <th key={r.id} className="px-4 py-2 text-right font-medium">{r.name}</th>
+                    ))}
+                    <th className="px-4 py-2 text-right font-medium">Team</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {days.map((d) => {
+                    const m = perDay.get(d)!
+                    const total = [...m.values()].reduce((a, b) => a + b, 0)
+                    return (
+                      <tr key={d} className={cn('border-b border-border-subtle last:border-b-0', d === today && 'bg-surface')}>
+                        <td className="tnum px-4 py-2 whitespace-nowrap">
+                          {dayLabel(d)}
+                          {d === today && <span className="ml-2 text-xs text-muted">today</span>}
+                        </td>
+                        {reps.map((r) => (
+                          <td key={r.id} className="tnum px-4 py-2 text-right">{m.get(r.id) ?? 0}</td>
+                        ))}
+                        <td className="tnum px-4 py-2 text-right font-semibold">{total}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <h2 className="mt-8 mb-1 text-sm font-semibold">Recordings</h2>
           <p className="mb-3 text-xs text-muted">
             Latest {RECORDINGS_LIMIT} recorded calls. Expand one to play it, read the notes,
@@ -176,6 +226,12 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
     </div>
   )
 }
+
+const DAY_TZ = 'America/New_York'
+const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: DAY_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+const dayKey = (iso: string) => dayFmt.format(new Date(iso))
+const dayLabel = (key: string) =>
+  new Date(`${key}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })
 
 function sinceIso(days: number) {
   return new Date(Date.now() - days * 86_400_000).toISOString()
