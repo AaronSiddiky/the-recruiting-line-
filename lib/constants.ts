@@ -91,12 +91,11 @@ export const LOSING_LEG_WHISPER =
   "Sorry about that, we've got a bad connection. We'll try you back shortly."
 
 /**
- * How many lines the dialer keeps out at once. One until Twilio lifts the
- * account's concurrent-call cap (see TWILIO_CONCURRENT_CALLS): with one line
- * there is nothing to collide with, and continuous top-up still dials the
- * next company the moment a call ends. Set LINES_PER_BATCH=4 afterwards.
+ * How many lines the dialer keeps out at once. The batch route trims this to
+ * what Twilio's concurrent-call cap allows (see TWILIO_CONCURRENT_CALLS), so
+ * asking for 4 under a cap of 4 yields 3 lines plus the rep's own leg.
  */
-export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.env.LINES_PER_BATCH) || 1))
+export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.env.LINES_PER_BATCH) || 4))
 
 /**
  * Twilio's concurrent-call cap for the whole account, agents' softphone legs
