@@ -79,6 +79,8 @@ export type CallSession = {
   status: 'active' | 'ended'
   started_at: string
   ended_at: string | null
+  /** Refreshed by the dialer's polling while the tab is open. */
+  last_seen_at: string
 }
 
 export type DialBatch = {

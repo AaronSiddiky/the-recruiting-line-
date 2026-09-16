@@ -31,13 +31,29 @@ type BatchResponse = {
 
 const OFFLINE_AGENT: AgentAudio = { line: 'offline', muted: false, warnings: [] }
 
+class SessionConflict extends Error {
+  constructor(
+    message: string,
+    public lastSeenSeconds: number,
+  ) {
+    super(message)
+  }
+}
+
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  const data = (await response.json().catch(() => ({}))) as T & { error?: string }
+  const data = (await response.json().catch(() => ({}))) as T & {
+    error?: string
+    activeElsewhere?: boolean
+    lastSeenSeconds?: number
+  }
+  if (response.status === 409 && data.activeElsewhere) {
+    throw new SessionConflict(data.error ?? 'Already dialing elsewhere.', data.lastSeenSeconds ?? 0)
+  }
   if (!response.ok) throw new Error(data.error ?? `Request failed (${response.status})`)
   return data
 }
@@ -208,7 +224,21 @@ export function useDialer() {
     endingRef.current = false
     dispatch({ type: 'SESSION_CONNECTING' })
     setSync('connecting')
-    const session = await postJson<{ sessionId: string }>('/api/session/start')
+    let session: { sessionId: string }
+    try {
+      session = await postJson<{ sessionId: string }>('/api/session/start', {})
+    } catch (e) {
+      const conflict = e instanceof SessionConflict ? e : null
+      if (!conflict) throw e
+      const ago = conflict.lastSeenSeconds
+      const takeOver = window.confirm(
+        `This account is already dialing in another window (active ${ago}s ago).\n\n` +
+          'If that is someone else using your login, taking over hangs up their calls. ' +
+          'Each rep should sign in with their own account.\n\nTake over anyway?',
+      )
+      if (!takeOver) throw new Error('Already dialing in another window. End that session first, or use your own login.')
+      session = await postJson<{ sessionId: string }>('/api/session/start', { force: true })
+    }
     await connectSoftphone(session.sessionId)
     dispatch({ type: 'SESSION_READY', sessionId: session.sessionId })
     return session.sessionId

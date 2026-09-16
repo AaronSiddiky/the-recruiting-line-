@@ -5,12 +5,19 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { hangUpSession } from '@/lib/twilio/calls'
 import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
+/** A session polled more recently than this is someone actively dialing. */
+const ALIVE_WINDOW_MS = 45_000
+
 /**
  * Open a dialing session. One active session per agent: a stale session from a
  * closed tab still owns a conference and would keep answering webhooks, so we
  * tear down anything the agent left running before opening a new one.
+ *
+ * A session that is still being polled is not stale: it is this account
+ * dialing in another window, or another person on this login. Cutting it off
+ * silently hangs up their calls, so that needs an explicit `force`.
  */
-export async function POST() {
+export async function POST(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -18,13 +25,29 @@ export async function POST() {
 
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
 
+  const { force } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean }
   const admin = createAdminClient()
 
   const { data: stale } = await admin
     .from('call_sessions')
-    .select('id')
+    .select('id, last_seen_at')
     .eq('agent_id', user.id)
     .eq('status', 'active')
+
+  const alive = (stale ?? []).find(
+    (s) => Date.now() - new Date(s.last_seen_at ?? 0).getTime() < ALIVE_WINDOW_MS,
+  )
+  if (alive && !force) {
+    const seconds = Math.round((Date.now() - new Date(alive.last_seen_at).getTime()) / 1000)
+    return NextResponse.json(
+      {
+        error: 'This account is already dialing in another window.',
+        activeElsewhere: true,
+        lastSeenSeconds: seconds,
+      },
+      { status: 409 },
+    )
+  }
 
   for (const session of stale ?? []) {
     await hangUpSession(session.id)

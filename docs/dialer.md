@@ -40,6 +40,15 @@ hangs up on and dispositions like any other.
 
 ---
 
+## One login per rep
+
+Each rep must sign in with their own account. A session belongs to the
+account that opened it; starting a new session under the same account is
+treated as "the old window is gone" and tears the old session down. Two people
+sharing a login therefore hang up each other's calls every time either presses
+Start. Since migration 0017 the dialer refuses to do that while the other
+session is still polling, and asks before taking over.
+
 ## Setup
 
 ### 1. Supabase
