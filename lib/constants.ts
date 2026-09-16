@@ -91,11 +91,12 @@ export const LOSING_LEG_WHISPER =
   "Sorry about that, we've got a bad connection. We'll try you back shortly."
 
 /**
- * How many lines the dialer keeps out at once. Twilio caps concurrent calls
- * per account (error 10004), and each rep's own softphone leg counts too, so
- * this must stay below (limit - reps). Override with LINES_PER_BATCH.
+ * How many lines the dialer keeps out at once. One until Twilio lifts the
+ * account's concurrent-call cap (see TWILIO_CONCURRENT_CALLS): with one line
+ * there is nothing to collide with, and continuous top-up still dials the
+ * next company the moment a call ends. Set LINES_PER_BATCH=4 afterwards.
  */
-export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.env.LINES_PER_BATCH) || 4))
+export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.env.LINES_PER_BATCH) || 1))
 
 /**
  * Twilio's concurrent-call cap for the whole account, agents' softphone legs
