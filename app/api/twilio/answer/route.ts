@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   // the session ended, must not be bridged into an empty or busy room.
   const { data: leg } = await admin
     .from('calls')
-    .select('ended_at, session:call_sessions!calls_session_id_fkey(status)')
+    .select('ended_at, session_id, session:call_sessions!calls_session_id_fkey(status)')
     .eq('id', callId)
     .maybeSingle()
   const sessionStatus = (leg?.session as { status?: string } | null)?.status
@@ -63,6 +63,42 @@ export async function POST(request: Request) {
     // Fail closed. If the arbiter is unreachable we hang up rather than risk
     // bridging two prospects into the same conference.
     lost = error != null || won !== true
+
+    // A leg whose batch row is gone (a queue-function bug deleted it) still
+    // belongs to a session. Claim that session's live slot directly: the
+    // UPDATE ... WHERE live_call_id IS NULL is atomic, same as the RPC.
+    if (lost && !error) {
+      const { data: batch } = await admin.from('dial_batches').select('id').eq('id', batchId).maybeSingle()
+      if (!batch) {
+        const sessionId = (leg as { session_id?: string }).session_id ?? ''
+        const { data: claimed } = await admin
+          .from('call_sessions')
+          .update({ live_call_id: callId })
+          .eq('id', sessionId)
+          .is('live_call_id', null)
+          .select('id')
+        lost = !claimed?.length
+        if (lost) {
+          // The slot still names the previous call; free if that call ended.
+          const { data: current } = await admin
+            .from('call_sessions')
+            .select('live_call_id, live:calls!call_sessions_live_call_id_fkey(ended_at)')
+            .eq('id', sessionId)
+            .maybeSingle()
+          const previous = current?.live_call_id
+          const previousEnded = !!(current?.live as { ended_at?: string | null } | null)?.ended_at
+          if (previous && previousEnded) {
+            const { data: reclaimed } = await admin
+              .from('call_sessions')
+              .update({ live_call_id: callId })
+              .eq('id', sessionId)
+              .eq('live_call_id', previous)
+              .select('id')
+            lost = !reclaimed?.length
+          }
+        }
+      }
+    }
   }
 
   if (lost) {
