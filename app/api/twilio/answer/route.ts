@@ -38,6 +38,19 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
+  // A leg that dials late out of Twilio's queue, after we cancelled it or after
+  // the session ended, must not be bridged into an empty or busy room.
+  const { data: leg } = await admin
+    .from('calls')
+    .select('ended_at, session:call_sessions!calls_session_id_fkey(status)')
+    .eq('id', callId)
+    .maybeSingle()
+  const sessionStatus = (leg?.session as { status?: string } | null)?.status
+  if (!leg || leg.ended_at || sessionStatus !== 'active') {
+    response.hangup()
+    return twiml(response.toString())
+  }
+
   // A manual dial from the dial pad has no batch and therefore no race: it is
   // one number the agent typed, so it wins by definition. Only a fanned-out
   // batch needs the arbiter.

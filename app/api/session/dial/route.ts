@@ -137,7 +137,11 @@ export async function POST(request: Request) {
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     })
 
-    await admin.from('calls').update({ call_sid: call.sid }).eq('id', callRow.id)
+    const queued = Number(call.queueTime ?? 0)
+    await admin
+      .from('calls')
+      .update({ call_sid: call.sid, notes: queued > 0 ? `Twilio queue time: ${Math.round(queued / 1000)}s` : null })
+      .eq('id', callRow.id)
 
     return NextResponse.json({
       line: {

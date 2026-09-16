@@ -129,9 +129,13 @@ export async function POST(request: Request) {
           // first pickup wins outright and the rep hangs up on any voicemail.
         })
 
+        // QueueTime is how long Twilio expects to hold this call before dialing
+        // (its account-wide calls-per-second limit). Kept on the row so a leg
+        // that never rings can be explained after the fact.
+        const queued = Number(call.queueTime ?? 0)
         await admin
           .from('calls')
-          .update({ call_sid: call.sid })
+          .update({ call_sid: call.sid, notes: queued > 0 ? `Twilio queue time: ${Math.round(queued / 1000)}s` : null })
           .eq('id', lead.call_id)
 
         lines.push({
