@@ -77,6 +77,7 @@ export const config = {
     '/dialer/:path*',
     '/stats/:path*',
     '/clients/:path*',
+    '/health/:path*',
     '/api/clients/:path*',
     '/companies/:path*',
     '/lead-list/:path*',

@@ -28,9 +28,18 @@ export async function POST(request: Request) {
   }
 
   await hangUpSession(sessionId)
+  const now = new Date().toISOString()
+  // Legs still ringing when the session ends are hung up at Twilio above;
+  // close them here too so a missed callback cannot leave them "dialing".
+  await admin
+    .from('calls')
+    .update({ status: 'canceled', ended_at: now, notes: 'Session ended while this line was still ringing.' })
+    .eq('session_id', sessionId)
+    .in('status', ['dialing', 'ringing'])
+    .is('ended_at', null)
   await admin
     .from('call_sessions')
-    .update({ status: 'ended', ended_at: new Date().toISOString() })
+    .update({ status: 'ended', ended_at: now })
     .eq('id', sessionId)
 
   return NextResponse.json({ ok: true })
