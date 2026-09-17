@@ -221,6 +221,11 @@ export function useDialer() {
       // Ignore.
     }
   }, [])
+  /** Switch microphones mid-session (the SDK swaps the track live). */
+  const setMicDevice = useCallback(async (deviceId: string) => {
+    await deviceRef.current?.audio?.setInputDevice(deviceId).catch(() => undefined)
+  }, [])
+
   const setLinesWanted = useCallback((n: number) => {
     const v = Math.min(6, Math.max(1, Math.round(n)))
     setLinesWantedState(v)
@@ -243,9 +248,20 @@ export function useDialer() {
     if (!token) throw new Error(error ?? 'Could not get a voice token.')
 
     // Loaded lazily: the Voice SDK touches `window` at import time.
-    const { Device } = await import('@twilio/voice-sdk')
-    const device = new Device(token, { logLevel: 'error' })
+    const { Device, Call } = await import('@twilio/voice-sdk')
+    // Opus first: wideband, packet-loss tolerant. PCMU stays as the fallback.
+    const device = new Device(token, {
+      logLevel: 'error',
+      codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
+    })
     deviceRef.current = device
+    // The rep's chosen microphone, if they picked one on the home screen.
+    try {
+      const micId = localStorage.getItem('dialer.micDeviceId')
+      if (micId) await device.audio?.setInputDevice(micId).catch(() => undefined)
+    } catch {
+      // No storage; the browser default mic is used.
+    }
     device.on('error', (e: { message: string }) => dispatch({ type: 'ERROR', message: e.message }))
 
     setAgent({ line: 'connecting', muted: false, warnings: [] })
@@ -632,5 +648,6 @@ export function useDialer() {
     setCallVolume,
     linesWanted,
     setLinesWanted,
+    setMicDevice,
   }
 }

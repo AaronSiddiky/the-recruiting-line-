@@ -10,9 +10,14 @@ export type WavRecording = {
   stop: () => Promise<Blob>
 }
 
-export async function startWavRecording(): Promise<WavRecording> {
+export async function startWavRecording(deviceId?: string): Promise<WavRecording> {
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audio: {
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
   })
   const ctx = new AudioContext()
   const source = ctx.createMediaStreamSource(stream)

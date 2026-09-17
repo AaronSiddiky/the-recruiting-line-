@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { ExitInterview } from './exit-interview'
 import { DialPad } from './dial-pad'
 import { VoicemailSettings } from './voicemail-settings'
+import { MicSettings } from './mic-settings'
 import { SpotifyDeck } from './spotify-deck'
 import { requestSpotifyRefresh, useSpotifyMini } from './spotify-bus'
 import { Pause, Volume2 } from 'lucide-react'
@@ -144,6 +145,7 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
           <div className="flex flex-col items-center gap-8">
             <IdleState queueSize={queueSize} />
             {pad}
+            <MicSettings onChange={(id) => void d.setMicDevice(id)} />
             <VoicemailSettings hasVoicemail={hasVoicemail} />
           </div>
         )}
@@ -154,6 +156,7 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
           <div className="flex flex-col items-center gap-8">
             <ReadyState queueSize={queueSize} onResume={d.resumeQueue} />
             {pad}
+            <MicSettings onChange={(id) => void d.setMicDevice(id)} />
             <VoicemailSettings hasVoicemail={hasVoicemail} />
           </div>
         )}
