@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TrackView } from '@/lib/spotify/views'
+import { onSpotifyRefresh, publishSpotify } from './spotify-bus'
 
 type State = {
   connected: boolean
@@ -100,6 +101,11 @@ export function SpotifyDeck() {
       setFetchedAt(Date.now())
       setNow(Date.now())
       setState(next)
+      publishSpotify({
+        connected: !!next.connected && next.scopesOk !== false,
+        isPlaying: !!next.isPlaying,
+        track: next.track ? { name: next.track.name, artist: next.track.artist, image: next.track.image } : null,
+      })
     } catch {
       // Network blip; the next poll catches up.
     }
@@ -125,9 +131,11 @@ export function SpotifyDeck() {
   useEffect(() => {
     const first = setTimeout(() => void refresh(), 0)
     const timer = setInterval(() => void refresh(), POLL_MS)
+    const off = onSpotifyRefresh(() => void refresh())
     return () => {
       clearTimeout(first)
       clearInterval(timer)
+      off()
     }
   }, [refresh])
 

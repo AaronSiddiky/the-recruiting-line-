@@ -25,7 +25,10 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
 
-  const { force } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean }
+  const { force, lines } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean; lines?: number }
+  // The rep's chosen line count; the batch route still trims it to what
+  // Twilio's concurrent-call cap allows at the moment of dialing.
+  const linesPerBatch = Math.min(6, Math.max(1, Math.round(Number(lines)) || DEFAULT_LINES_PER_BATCH))
   const admin = createAdminClient()
 
   const { data: stale } = await admin
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
     .insert({
       agent_id: user.id,
       conference_name: `rl-${randomUUID()}`,
-      lines_per_batch: DEFAULT_LINES_PER_BATCH,
+      lines_per_batch: linesPerBatch,
     })
     .select('id, conference_name, lines_per_batch')
     .single()

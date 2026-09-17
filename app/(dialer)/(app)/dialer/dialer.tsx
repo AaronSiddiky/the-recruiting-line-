@@ -20,6 +20,8 @@ import { ExitInterview } from './exit-interview'
 import { DialPad } from './dial-pad'
 import { VoicemailSettings } from './voicemail-settings'
 import { SpotifyDeck } from './spotify-deck'
+import { requestSpotifyRefresh, useSpotifyMini } from './spotify-bus'
+import { Pause, Volume2 } from 'lucide-react'
 import { useDialer, type AgentAudio, type AudioLevels } from './use-dialer'
 import {
   describeLine,
@@ -67,6 +69,24 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
           <AgentLineChip agent={d.agent} levelsRef={d.levelsRef} onToggleMute={d.toggleMute} />
         )}
 
+        {d.agent.line !== 'offline' && (
+          <label className="flex items-center gap-1.5 text-xs text-muted" title="Call volume (how loud the prospect is in your ear)">
+            <Volume2 className="size-3.5" aria-hidden />
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(d.callVolume * 100)}
+              onChange={(e) => d.setCallVolume(Number(e.target.value) / 100)}
+              aria-label="Call volume"
+              className="h-1 w-24 accent-accent"
+            />
+            <span className="tnum w-8">{Math.round(d.callVolume * 100)}%</span>
+          </label>
+        )}
+
+        <MusicButton />
+
         <div className="ml-auto flex items-center gap-4">
           {running && <SyncBadge sync={d.sync} />}
           <span className="tnum hidden text-xs text-muted md:inline">
@@ -80,15 +100,30 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
               End session
             </Button>
           ) : (
-            <Button
-              variant="primary"
-              onClick={() => void d.start()}
-              disabled={queueSize === 0}
-              title={queueSize === 0 ? 'No leads queued. Use the dial pad below.' : undefined}
-            >
-              <Play className="size-3.5" aria-hidden />
-              Start dialing
-            </Button>
+            <>
+              <label className="flex items-center gap-1.5 text-xs text-muted" title="How many companies to ring at once. Trimmed to what Twilio allows.">
+                Lines
+                <select
+                  value={d.linesWanted}
+                  onChange={(e) => d.setLinesWanted(Number(e.target.value))}
+                  aria-label="Lines at once"
+                  className="h-8 rounded-md border border-border-strong bg-background px-1.5 text-sm"
+                >
+                  {[1, 2, 3, 4].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                variant="primary"
+                onClick={() => void d.start()}
+                disabled={queueSize === 0}
+                title={queueSize === 0 ? 'No leads queued. Use the dial pad below.' : undefined}
+              >
+                <Play className="size-3.5" aria-hidden />
+                Start dialing
+              </Button>
+            </>
           )}
         </div>
       </header>
@@ -838,4 +873,37 @@ function useNow(active: boolean) {
     return () => clearInterval(timer)
   }, [active])
   return now
+}
+
+/** Play/pause for the rep's Spotify, up top so it needs no scrolling. */
+function MusicButton() {
+  const music = useSpotifyMini()
+  const [busy, setBusy] = useState(false)
+  if (!music?.connected) return null
+  async function toggle() {
+    setBusy(true)
+    try {
+      await fetch('/api/spotify/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: music!.isPlaying ? 'pause' : 'play' }),
+      })
+      setTimeout(requestSpotifyRefresh, 400)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => void toggle()}
+      disabled={busy}
+      title={music.track ? `${music.track.name} · ${music.track.artist}` : 'Spotify'}
+      aria-label={music.isPlaying ? 'Pause music' : 'Play music'}
+      className="inline-flex h-8 max-w-56 cursor-pointer items-center gap-2 rounded-md border border-border-strong px-2 text-xs hover:bg-surface-2 disabled:opacity-50"
+    >
+      {music.isPlaying ? <Pause className="size-3.5 shrink-0" aria-hidden /> : <Play className="size-3.5 shrink-0" aria-hidden />}
+      <span className="truncate">{music.track ? music.track.name : 'Spotify'}</span>
+    </button>
+  )
 }

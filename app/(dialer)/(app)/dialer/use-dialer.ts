@@ -162,6 +162,79 @@ export function useDialer() {
     }
   }, [sessionId])
 
+  // --- Call volume ------------------------------------------------------------
+
+  const VOLUME_KEY = 'dialer.callVolume'
+  const [callVolume, setCallVolumeState] = useState(1)
+  const callVolumeRef = useRef(1)
+
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(VOLUME_KEY))
+      if (saved > 0 && saved <= 1) {
+        callVolumeRef.current = saved
+        queueMicrotask(() => setCallVolumeState(saved))
+      }
+    } catch {
+      // No storage; default volume.
+    }
+  }, [])
+
+  /**
+   * The Voice SDK has no public output-volume control; it plays the far end
+   * through <audio> elements it owns. Reach those and set their volume.
+   */
+  const applyCallVolume = useCallback((v: number) => {
+    const conn = connectionRef.current as unknown as {
+      _mediaHandler?: { outputs?: Map<string, { audio?: HTMLAudioElement }>; _masterAudio?: HTMLAudioElement | null }
+    } | null
+    const mh = conn?._mediaHandler
+    if (!mh) return
+    for (const out of mh.outputs?.values() ?? []) if (out.audio) out.audio.volume = v
+    if (mh._masterAudio) mh._masterAudio.volume = v
+  }, [])
+
+  const setCallVolume = useCallback(
+    (v: number) => {
+      const clamped = Math.min(1, Math.max(0, v))
+      callVolumeRef.current = clamped
+      setCallVolumeState(clamped)
+      applyCallVolume(clamped)
+      try {
+        localStorage.setItem(VOLUME_KEY, String(clamped))
+      } catch {
+        // Ignore.
+      }
+    },
+    [applyCallVolume],
+  )
+
+  // --- Lines per batch (rep's preference) ------------------------------------
+
+  const LINES_KEY = 'dialer.lines'
+  const [linesWanted, setLinesWantedState] = useState(DEFAULT_LINES_PER_BATCH)
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(LINES_KEY))
+      if (saved >= 1 && saved <= 6) queueMicrotask(() => setLinesWantedState(saved))
+    } catch {
+      // Ignore.
+    }
+  }, [])
+  const setLinesWanted = useCallback((n: number) => {
+    const v = Math.min(6, Math.max(1, Math.round(n)))
+    setLinesWantedState(v)
+    try {
+      localStorage.setItem(LINES_KEY, String(v))
+    } catch {
+      // Ignore.
+    }
+  }, [])
+  const linesWantedRef = useRef(linesWanted)
+  useEffect(() => {
+    linesWantedRef.current = linesWanted
+  }, [linesWanted])
+
   // --- The agent's own line ---------------------------------------------------
 
   const connectSoftphone = useCallback(async (id: string) => {
@@ -179,7 +252,11 @@ export function useDialer() {
     const connection = await device.connect({ params: { sessionId: id } })
     connectionRef.current = connection
 
-    connection.on('accept', () => setAgent((a) => ({ ...a, line: 'open' })))
+    connection.on('accept', () => {
+      setAgent((a) => ({ ...a, line: 'open' }))
+      // Outputs exist only once media is up; apply the remembered volume then.
+      setTimeout(() => applyCallVolume(callVolumeRef.current), 300)
+    })
     connection.on('reconnecting', () => setAgent((a) => ({ ...a, line: 'reconnecting' })))
     connection.on('reconnected', () => setAgent((a) => ({ ...a, line: 'open' })))
     connection.on('mute', (isMuted: boolean) => setAgent((a) => ({ ...a, muted: isMuted })))
@@ -205,7 +282,7 @@ export function useDialer() {
     })
 
     if (connection.status() === 'open') setAgent((a) => ({ ...a, line: 'open' }))
-  }, [])
+  }, [applyCallVolume])
 
   // --- Dialing ----------------------------------------------------------------
 
@@ -251,7 +328,7 @@ export function useDialer() {
     setSync('connecting')
     let session: { sessionId: string; linesPerBatch?: number }
     try {
-      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', {})
+      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { lines: linesWantedRef.current })
     } catch (e) {
       const conflict = e instanceof SessionConflict ? e : null
       if (!conflict) throw e
@@ -262,7 +339,7 @@ export function useDialer() {
           'Each rep should sign in with their own account.\n\nTake over anyway?',
       )
       if (!takeOver) throw new Error('Already dialing in another window. End that session first, or use your own login.')
-      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { force: true })
+      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { force: true, lines: linesWantedRef.current })
     }
     linesPerBatchRef.current = session.linesPerBatch ?? DEFAULT_LINES_PER_BATCH
     queueDryRef.current = false
@@ -551,5 +628,9 @@ export function useDialer() {
     sendDigits,
     finishWrapup,
     dismissNotice,
+    callVolume,
+    setCallVolume,
+    linesWanted,
+    setLinesWanted,
   }
 }
