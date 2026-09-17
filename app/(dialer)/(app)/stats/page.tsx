@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 import { STATS_OUTCOME_SINCE, STATS_SINCE } from '@/lib/constants'
 import { CallHistory, type CallRow } from '../companies/[id]/call-history'
+import { ShareScoreboard } from './share-button'
+import { scoreboardPath } from '@/lib/stats/daily'
 
 const RANGES = [
   { value: 'all', label: 'All time', days: null },
@@ -110,7 +112,8 @@ export default async function StatsPage(props: PageProps<'/stats'>) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2.5">
         <h1 className="mr-2 text-sm font-semibold">Stats</h1>
-        <nav className="flex gap-1" aria-label="Range">
+        <ShareScoreboard url={`https://www.therecruitingline.com${scoreboardPath()}`} />
+        <nav className="ml-2 flex gap-1" aria-label="Range">
           {RANGES.map((r) => (
             <Link
               key={r.value}

@@ -51,7 +51,6 @@ export function MicSettings({ onChange }: { onChange?: (deviceId: string) => voi
       clearTimeout(t)
       navigator.mediaDevices?.removeEventListener?.('devicechange', loadDevices)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function choose(id: string) {
