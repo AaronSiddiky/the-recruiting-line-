@@ -6,6 +6,7 @@ import { toE164, formatPhone } from '@/lib/utils'
 import { DIAL_TIMEOUT_SECONDS } from '@/lib/constants'
 import { availableLines } from '@/lib/twilio/budget'
 import { callerIdsFor } from '@/lib/twilio/caller-ids'
+import { accountForAgent } from '@/lib/twilio/accounts'
 
 /**
  * Dial one number the agent typed by hand.
@@ -103,7 +104,9 @@ export async function POST(request: Request) {
     )
   }
 
-  const budget = await availableLines()
+  // Each rep dials through their own Twilio account, against its own cap.
+  const account = await accountForAgent(user.id)
+  const budget = await availableLines(account)
   if (budget.available < 1) {
     return NextResponse.json(
       { error: `Twilio's call limit (${budget.cap} at once, softphones included) is full right now. Try again in a moment.` },
@@ -130,7 +133,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const call = await twilioClient().calls.create({
+    const call = await twilioClient(account).calls.create({
       to: e164,
       // One of this rep's own numbers, rotated like batch lines.
       from: (await callerIdsFor(user.id))[0],

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@/lib/supabase/server'
-import { env } from '@/lib/env'
+import { accountForAgent } from '@/lib/twilio/accounts'
 
 const TOKEN_TTL_SECONDS = 60 * 60
 
@@ -20,17 +20,20 @@ export async function GET() {
     return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
   }
 
+  // The rep's line lives on their own Twilio account, so it counts against
+  // that account's concurrent-call cap and nobody else's.
+  const account = await accountForAgent(user.id)
   const { AccessToken } = twilio.jwt
   const token = new AccessToken(
-    env.twilioAccountSid,
-    env.twilioApiKeySid,
-    env.twilioApiKeySecret,
+    account.accountSid,
+    account.apiKeySid,
+    account.apiKeySecret,
     { identity: `agent_${user.id}`, ttl: TOKEN_TTL_SECONDS },
   )
 
   token.addGrant(
     new AccessToken.VoiceGrant({
-      outgoingApplicationSid: env.twimlAppSid,
+      outgoingApplicationSid: account.twimlAppSid,
       incomingAllow: false,
     }),
   )

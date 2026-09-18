@@ -2,10 +2,13 @@ import 'server-only'
 import { timingSafeEqual } from 'node:crypto'
 import twilio from 'twilio'
 import { env } from '@/lib/env'
+import { accountBySid, type TwilioAccount } from '@/lib/twilio/accounts'
 
 export type VerifiedWebhook = {
   params: Record<string, string>
   url: URL
+  /** The Twilio account that sent this webhook. */
+  account: TwilioAccount
 }
 
 function secretMatches(candidate: string | null): boolean {
@@ -46,9 +49,14 @@ export async function verifyTwilioRequest(
   const signature = request.headers.get('x-twilio-signature')
   if (!signature) return null
 
+  // Each Twilio account signs with its own auth token, and names itself in
+  // AccountSid. An account we don't know is rejected outright.
+  const account = accountBySid(params.AccountSid)
+  if (!account) return null
+
   const signedUrl = `${env.appUrl}${requestUrl.pathname}${requestUrl.search}`
   const valid = twilio.validateRequest(
-    env.twilioAuthToken,
+    account.authToken,
     signature,
     signedUrl,
     params,
@@ -56,7 +64,7 @@ export async function verifyTwilioRequest(
 
   if (!valid) return null
 
-  return { params, url: requestUrl }
+  return { params, url: requestUrl, account }
 }
 
 /** TwiML responses must be served as XML or Twilio treats them as an error. */

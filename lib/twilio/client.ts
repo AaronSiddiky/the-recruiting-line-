@@ -1,14 +1,18 @@
 import 'server-only'
 import twilio from 'twilio'
 import { env } from '@/lib/env'
+import { primaryAccount, type TwilioAccount } from '@/lib/twilio/accounts'
 
-let cached: ReturnType<typeof twilio> | null = null
+const clients = new Map<string, ReturnType<typeof twilio>>()
 
-export function twilioClient() {
-  if (!cached) {
-    cached = twilio(env.twilioAccountSid, env.twilioAuthToken)
+/** REST client for one Twilio account; the primary one when none is given. */
+export function twilioClient(account: TwilioAccount = primaryAccount()) {
+  let client = clients.get(account.accountSid)
+  if (!client) {
+    client = twilio(account.accountSid, account.authToken)
+    clients.set(account.accountSid, client)
   }
-  return cached
+  return client
 }
 
 /** Absolute webhook URL Twilio can reach, with the shared secret attached. */

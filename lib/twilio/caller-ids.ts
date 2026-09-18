@@ -1,14 +1,10 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { env } from '@/lib/env'
+import { accountForAgent, agentIdsOn } from '@/lib/twilio/accounts'
 
 /**
- * Which caller IDs each rep dials from, keyed by login email. A prospect who
- * calls a number back reaches the same person's pool, and each number's volume
- * comes from one rep's pace instead of whoever happens to be dialing.
- *
- * This does not let two reps call at once: Twilio's concurrent-call cap is
- * per account, not per number (see TWILIO_CONCURRENT_CALLS).
+ * Which caller IDs each rep dials from, keyed by login email, when two reps
+ * share one Twilio account. A rep alone on an account uses all of its numbers.
  *
  * Override without a code change by setting TWILIO_CALLER_IDS_BY_REP, e.g.
  *   a@x.com=+15550000001|+15550000002;b@y.com=+15550000003
@@ -31,15 +27,21 @@ function mapping(): Record<string, string[]> {
 }
 
 /**
- * The rep's numbers, rotated to a random starting point so a one- or two-line
- * batch doesn't always dial from the same number. Only numbers in
- * TWILIO_CALLER_IDS are used; a rep with no assignment gets the whole pool.
+ * The numbers this rep dials from on their Twilio account, rotated to a
+ * random starting point so a one- or two-line batch doesn't always use the
+ * same number. Only numbers owned by that account are ever returned.
  */
 export async function callerIdsFor(agentId: string): Promise<string[]> {
-  const pool = env.callerIds
-  const { data } = await createAdminClient().from('profiles').select('email').eq('id', agentId).maybeSingle()
-  const assigned = (mapping()[(data?.email ?? '').toLowerCase()] ?? []).filter((n) => pool.includes(n))
-  const ids = assigned.length > 0 ? assigned : pool
+  const account = await accountForAgent(agentId)
+  const pool = account.callerIds
+  const reps = await agentIdsOn(account)
+  let ids = pool
+  if (!reps || reps.length > 1) {
+    // Shared account: split its numbers between the reps on it.
+    const { data } = await createAdminClient().from('profiles').select('email').eq('id', agentId).maybeSingle()
+    const assigned = (mapping()[(data?.email ?? '').toLowerCase()] ?? []).filter((n) => pool.includes(n))
+    if (assigned.length > 0) ids = assigned
+  }
   const start = Math.floor(Math.random() * ids.length)
   return [...ids.slice(start), ...ids.slice(0, start)]
 }

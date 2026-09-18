@@ -3,6 +3,7 @@ import twilio from 'twilio'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient } from '@/lib/twilio/client'
+import { accountForAgent } from '@/lib/twilio/accounts'
 
 /**
  * Drop the rep's pre-recorded message into a live call and hang it up.
@@ -55,7 +56,7 @@ export async function POST(
   response.hangup()
 
   try {
-    await twilioClient().calls(call.call_sid).update({ twiml: response.toString() })
+    await twilioClient(await accountForAgent(call.agent_id)).calls(call.call_sid).update({ twiml: response.toString() })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Twilio refused the redirect.' },

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient } from '@/lib/twilio/client'
+import { accountForAgent } from '@/lib/twilio/accounts'
 
 /**
  * A leg still "dialing" 8 s after creation gets its status checked at Twilio.
@@ -60,11 +61,12 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/session
     .eq('status', 'dialing')
     .lt('started_at', new Date(Date.now() - CHECK_AFTER_MS).toISOString())
   let rejected = 0
+  const twilioAccount = await accountForAgent(user.id)
   for (const c of pending ?? []) {
     const age = Date.now() - new Date(c.started_at).getTime()
     let reason: string | null = null
     if (c.call_sid) {
-      const twilioStatus = await twilioClient()
+      const twilioStatus = await twilioClient(twilioAccount)
         .calls(c.call_sid)
         .fetch()
         .then((call) => call.status)
@@ -76,7 +78,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/session
         reason = `Twilio reported ${twilioStatus}; the callback never arrived.`
       } else if (age > NEVER_RANG_MS) {
         reason = 'Twilio never started dialing within 45s; cancelled so the company can be tried again.'
-        await twilioClient().calls(c.call_sid).update({ status: 'completed' }).catch(() => undefined)
+        await twilioClient(twilioAccount).calls(c.call_sid).update({ status: 'completed' }).catch(() => undefined)
       }
     } else if (age > NEVER_RANG_MS) {
       reason = 'Call was never created at Twilio.'

@@ -4,6 +4,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from 'zod'
 import { DeepgramClient } from '@deepgram/sdk'
 import { twilioClient } from '@/lib/twilio/client'
+import { accountForCall } from '@/lib/twilio/accounts'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { env } from '@/lib/env'
 import type { AiSummary } from '@/types/db'
@@ -185,10 +186,10 @@ export async function archiveRecording(
   recordingSid: string,
   companyId: string,
 ): Promise<string> {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`
-  const auth = Buffer.from(
-    `${env.twilioAccountSid}:${env.twilioAuthToken}`,
-  ).toString('base64')
+  // A recording lives on the account that placed the call.
+  const account = await accountForCall(callId)
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${account.accountSid}/Recordings/${recordingSid}.mp3`
+  const auth = Buffer.from(`${account.accountSid}:${account.authToken}`).toString('base64')
 
   const response = await fetch(url, { headers: { Authorization: `Basic ${auth}` } })
   if (!response.ok) {
@@ -209,7 +210,7 @@ export async function archiveRecording(
 
   // Twilio bills monthly storage for every recording it keeps. We have our own
   // copy now, so let theirs go.
-  await twilioClient()
+  await twilioClient(account)
     .recordings(recordingSid)
     .remove()
     .catch(() => undefined)

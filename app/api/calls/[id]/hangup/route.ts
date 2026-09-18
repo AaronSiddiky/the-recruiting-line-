@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient } from '@/lib/twilio/client'
+import { accountForAgent } from '@/lib/twilio/accounts'
 
 /**
  * Drop one leg without leaving the conference.
@@ -34,7 +35,7 @@ export async function POST(
   }
 
   if (call.call_sid) {
-    await twilioClient()
+    await twilioClient(await accountForAgent(call.agent_id))
       .calls(call.call_sid)
       .update({ status: 'completed' })
       .catch(() => undefined)

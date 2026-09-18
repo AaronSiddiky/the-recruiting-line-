@@ -1,6 +1,7 @@
 import 'server-only'
 import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { accountForCall, accountForSession } from '@/lib/twilio/accounts'
 
 /**
  * Hang up every other ringing leg in the session the instant we have a winner.
@@ -25,6 +26,7 @@ export async function hangUpOthers(sessionId: string, winnerCallId: string) {
 
   if (!losers?.length) return
 
+  const account = await accountForSession(sessionId)
   const now = new Date().toISOString()
 
   await admin
@@ -39,7 +41,7 @@ export async function hangUpOthers(sessionId: string, winnerCallId: string) {
     losers
       .filter((l) => l.call_sid)
       .map((l) =>
-        twilioClient()
+        twilioClient(account)
           .calls(l.call_sid!)
           .update({ status: 'completed' })
           .catch(() => undefined),
@@ -69,7 +71,7 @@ export async function hangUpLosers(batchId: string, winnerCallId: string) {
  * three seconds of audio for each of the three legs we hang up on.
  */
 export async function startRecording(callSid: string, callId: string) {
-  const recording = await twilioClient()
+  const recording = await twilioClient(await accountForCall(callId))
     .calls(callSid)
     .recordings.create({
       recordingChannels: 'dual',
@@ -95,11 +97,12 @@ export async function hangUpSession(sessionId: string) {
 
   if (!live?.length) return
 
+  const account = await accountForSession(sessionId)
   await Promise.allSettled(
     live
       .filter((c) => c.call_sid)
       .map((c) =>
-        twilioClient()
+        twilioClient(account)
           .calls(c.call_sid!)
           .update({ status: 'completed' })
           .catch(() => undefined),

@@ -1,7 +1,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient } from '@/lib/twilio/client'
-import { TWILIO_CONCURRENT_CALLS } from '@/lib/constants'
+import { agentIdsOn, type TwilioAccount } from '@/lib/twilio/accounts'
 
 /** Sessions polled within this window hold a softphone leg at Twilio. */
 const AGENT_ALIVE_MS = 45_000
@@ -32,11 +32,11 @@ const TALKING_MAX_AGE_MS = 2 * 60 * 60_000
  * cap actually applies to. Null when Twilio can't be reached, so the caller
  * falls back to the database estimate rather than guessing zero.
  */
-async function liveAtTwilio(): Promise<number | null> {
+async function liveAtTwilio(account: TwilioAccount): Promise<number | null> {
   try {
     const lists = await Promise.all(
       (['queued', 'ringing', 'in-progress'] as const).map((status) =>
-        twilioClient().calls.list({ status, limit: 50 }),
+        twilioClient(account).calls.list({ status, limit: 50 }),
       ),
     )
     return lists.reduce((sum, list) => sum + list.length, 0)
@@ -45,28 +45,43 @@ async function liveAtTwilio(): Promise<number | null> {
   }
 }
 
-export async function availableLines(): Promise<{ available: number; cap: number; agents: number; inFlight: number }> {
+export async function availableLines(
+  account: TwilioAccount,
+): Promise<{ available: number; cap: number; agents: number; inFlight: number }> {
   const admin = createAdminClient()
+  // Only the reps on this account, and their calls, count against its cap.
+  // With one account configured that is everyone (null: no filter).
+  const reps = await agentIdsOn(account)
   const now = Date.now()
+
+  let sessions = admin
+    .from('call_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'active')
+    .gte('last_seen_at', new Date(now - AGENT_ALIVE_MS).toISOString())
+  let ringingQ = admin
+    .from('calls')
+    .select('id', { count: 'exact', head: true })
+    .in('status', ['dialing', 'ringing'])
+    .is('ended_at', null)
+    .gte('started_at', new Date(now - RINGING_MAX_AGE_MS).toISOString())
+  let talkingQ = admin
+    .from('calls')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'connected')
+    .is('ended_at', null)
+    .gte('started_at', new Date(now - TALKING_MAX_AGE_MS).toISOString())
+  if (reps) {
+    sessions = sessions.in('agent_id', reps)
+    ringingQ = ringingQ.in('agent_id', reps)
+    talkingQ = talkingQ.in('agent_id', reps)
+  }
+
   const [{ count: agents }, { count: ringing }, { count: talking }, twilioLive] = await Promise.all([
-    admin
-      .from('call_sessions')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active')
-      .gte('last_seen_at', new Date(now - AGENT_ALIVE_MS).toISOString()),
-    admin
-      .from('calls')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['dialing', 'ringing'])
-      .is('ended_at', null)
-      .gte('started_at', new Date(now - RINGING_MAX_AGE_MS).toISOString()),
-    admin
-      .from('calls')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'connected')
-      .is('ended_at', null)
-      .gte('started_at', new Date(now - TALKING_MAX_AGE_MS).toISOString()),
-    liveAtTwilio(),
+    sessions,
+    ringingQ,
+    talkingQ,
+    liveAtTwilio(account),
   ])
   const a = agents ?? 1
   const f = (ringing ?? 0) + (talking ?? 0)
@@ -75,5 +90,5 @@ export async function availableLines(): Promise<{ available: number; cap: number
   // held three live calls, and the dial came back error 10004. Twilio's list
   // can in turn trail a call reserved a moment ago, which the database counts.
   const used = Math.max(a + f, twilioLive ?? 0)
-  return { available: Math.max(0, TWILIO_CONCURRENT_CALLS - used), cap: TWILIO_CONCURRENT_CALLS, agents: a, inFlight: Math.max(f, used - a) }
+  return { available: Math.max(0, account.cap - used), cap: account.cap, agents: a, inFlight: Math.max(f, used - a) }
 }

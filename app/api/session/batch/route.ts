@@ -5,6 +5,7 @@ import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { withinCallingHours } from '@/lib/utils'
 import { availableLines } from '@/lib/twilio/budget'
 import { callerIdsFor } from '@/lib/twilio/caller-ids'
+import { accountForAgent } from '@/lib/twilio/accounts'
 import { DIAL_TIMEOUT_SECONDS, DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
 export type BatchLine = {
@@ -71,7 +72,9 @@ export async function POST(request: Request) {
   const perBatch = session.lines_per_batch ?? DEFAULT_LINES_PER_BATCH
   // A top-up asks for fewer lines than a full batch; never more, and never
   // more than Twilio will accept across the whole account right now.
-  const budget = await availableLines()
+  // Each rep dials through their own Twilio account, against its own cap.
+  const account = await accountForAgent(user.id)
+  const budget = await availableLines(account)
   const limit = Math.min(perBatch, Math.floor(Number(wanted) || perBatch), budget.available)
   if (limit < 1) {
     return NextResponse.json({ lines: [], capped: true, cap: budget.cap, agents: budget.agents, inFlight: budget.inFlight })
@@ -133,7 +136,7 @@ export async function POST(request: Request) {
       }
 
       try {
-        const call = await twilioClient().calls.create({
+        const call = await twilioClient(account).calls.create({
           to: lead.phone,
           from: callerIds[index % callerIds.length],
           timeout: DIAL_TIMEOUT_SECONDS,
