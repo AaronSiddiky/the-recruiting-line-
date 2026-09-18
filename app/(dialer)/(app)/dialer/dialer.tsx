@@ -23,7 +23,7 @@ import { MicSettings } from './mic-settings'
 import { SpotifyDeck } from './spotify-deck'
 import { requestSpotifyRefresh, useSpotifyMini } from './spotify-bus'
 import { Pause, Volume2 } from 'lucide-react'
-import { useDialer, type AgentAudio, type AudioLevels } from './use-dialer'
+import { useDialer, type AgentAudio, type AudioLevels, type LineWait } from './use-dialer'
 import {
   describeLine,
   formatClock,
@@ -64,6 +64,7 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
           lines={d.lines}
           liveLine={d.liveLine}
           wrap={d.wrap}
+          waitingForLine={d.lineWait !== null}
         />
 
         {d.agent.line !== 'offline' && (
@@ -154,7 +155,7 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
 
         {d.phase === 'ready' && (
           <div className="flex flex-col items-center gap-8">
-            <ReadyState queueSize={queueSize} onResume={d.resumeQueue} />
+            <ReadyState queueSize={queueSize} onResume={d.resumeQueue} lineWait={d.lineWait} />
             {pad}
             <MicSettings onChange={(id) => void d.setMicDevice(id)} />
             <VoicemailSettings hasVoicemail={hasVoicemail} />
@@ -232,12 +233,14 @@ function PhaseLabel({
   lines,
   liveLine,
   wrap,
+  waitingForLine = false,
 }: {
   phase: DialerPhase
   mode: DialMode
   lines: Line[]
   liveLine: Line | null
   wrap: WrapCall | null
+  waitingForLine?: boolean
 }) {
   let label = ''
   let dot = 'bg-muted-2'
@@ -253,8 +256,14 @@ function PhaseLabel({
       pulse = true
       break
     case 'ready':
-      label = 'Line open · ready to dial'
-      dot = 'bg-good'
+      if (waitingForLine) {
+        label = 'Waiting for a free line'
+        dot = 'bg-warn'
+        pulse = true
+      } else {
+        label = 'Line open · ready to dial'
+        dot = 'bg-good'
+      }
       break
     case 'dialing':
       dot = 'bg-warn'
@@ -464,7 +473,33 @@ function ConnectingState() {
   )
 }
 
-function ReadyState({ queueSize, onResume }: { queueSize: number; onResume: () => void }) {
+function ReadyState({
+  queueSize,
+  onResume,
+  lineWait,
+}: {
+  queueSize: number
+  onResume: () => void
+  lineWait: LineWait | null
+}) {
+  if (lineWait) {
+    const others = Math.max(0, lineWait.agents - 1)
+    return (
+      <div className="mx-auto max-w-md text-center">
+        <h1 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <Loader2 className="size-4 animate-spin text-warn" aria-hidden />
+          Waiting for a free line
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Twilio lets this account run {lineWait.cap} calls at once, and every rep&apos;s own line
+          counts as one. Right now {lineWait.agents} rep {lineWait.agents === 1 ? 'line' : 'lines'}
+          {lineWait.inFlight > 0 && ` and ${lineWait.inFlight} ${lineWait.inFlight === 1 ? 'call' : 'calls'}`} are using
+          them{others > 0 ? `, so you and ${others === 1 ? 'the other rep' : 'the other reps'} take turns` : ''}.
+        </p>
+        <p className="mt-2 text-sm font-medium">Dialing starts on its own as soon as one frees up.</p>
+      </div>
+    )
+  }
   return (
     <div className="mx-auto max-w-md text-center">
       <h1 className="text-lg font-semibold tracking-tight">Your line is open</h1>

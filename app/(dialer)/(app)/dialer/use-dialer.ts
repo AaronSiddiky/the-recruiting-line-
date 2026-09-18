@@ -32,7 +32,15 @@ type BatchResponse = {
   /** Twilio's concurrent-call cap left no room for (all of) the requested lines. */
   capped?: boolean
   cap?: number
+  agents?: number
+  inFlight?: number
 }
+
+/** Why a rep is waiting: the account's call slots and who holds them. */
+export type LineWait = { cap: number; agents: number; inFlight: number }
+
+/** How often a rep waiting for a free call slot asks again. */
+const WAIT_RETRY_MS = 4000
 
 const OFFLINE_AGENT: AgentAudio = { line: 'offline', muted: false, warnings: [] }
 
@@ -77,6 +85,7 @@ export function useDialer() {
   const [state, dispatch] = useReducer(dialerReducer, initialDialerState)
   const [agent, setAgent] = useState<AgentAudio>(OFFLINE_AGENT)
   const [sync, setSync] = useState<SyncState>('offline')
+  const [lineWait, setLineWait] = useState<LineWait | null>(null)
 
   const levelsRef = useRef<AudioLevels>({ input: 0, output: 0 })
   const deviceRef = useRef<TwilioDevice | null>(null)
@@ -312,12 +321,14 @@ export function useDialer() {
       try {
         const result = await postJson<BatchResponse>('/api/session/batch', { sessionId: id })
         if (result.capped && !result.lines?.length) {
-          dispatch({
-            type: 'SESSION_READY_NOTICE',
-            notice: `Twilio's call limit (${result.cap ?? 4} calls at once, including each rep's own line) is full. Waiting for a line to free up.`,
-          })
+          // No free slot: every call the account may hold is in use, usually by
+          // another rep. Park in `ready` and let the wait effect retry quietly;
+          // a warning here would auto-dismiss and leave a screen that looks idle.
+          setLineWait({ cap: result.cap ?? 3, agents: result.agents ?? 0, inFlight: result.inFlight ?? 0 })
+          dispatch({ type: 'RETURN_TO_READY', notice: null })
           return
         }
+        setLineWait(null)
         if (result.exhausted || !result.lines?.length) {
           queueDryRef.current = true
           dispatch({ type: 'QUEUE_EXHAUSTED' })
@@ -382,6 +393,7 @@ export function useDialer() {
   const manualDial = useCallback(
     async (phone: string) => {
       primeAudio()
+      setLineWait(null)
       try {
         const id = stateRef.current.sessionId ?? (await openSession())
         dispatch({ type: 'DIAL_REQUESTED', mode: 'manual' })
@@ -398,12 +410,55 @@ export function useDialer() {
     [openSession, refresh],
   )
 
+  // Waiting for a free call slot: ask again until one opens, then start
+  // dialing on our own. Silent on purpose: no dispatch while still capped, so
+  // nothing flickers and no cue replays every few seconds.
+  const waitingForLine = lineWait !== null
+  const waitingRequestRef = useRef(false)
+  useEffect(() => {
+    if (!waitingForLine || phase !== 'ready' || !sessionId) return
+    const timer = setInterval(async () => {
+      if (waitingRequestRef.current) return
+      waitingRequestRef.current = true
+      try {
+        const result = await postJson<BatchResponse>('/api/session/batch', { sessionId })
+        const current = stateRef.current
+        if (current.sessionId !== sessionId || current.phase !== 'ready') return
+        if (result.capped && !result.lines?.length) {
+          setLineWait({ cap: result.cap ?? 3, agents: result.agents ?? 0, inFlight: result.inFlight ?? 0 })
+          return
+        }
+        setLineWait(null)
+        if (result.exhausted || !result.lines?.length) {
+          queueDryRef.current = true
+          dispatch({ type: 'QUEUE_EXHAUSTED' })
+          return
+        }
+        dispatch({ type: 'DIAL_REQUESTED', mode: 'batch' })
+        dispatch({
+          type: 'LINES_STARTED',
+          mode: 'batch',
+          lines: result.lines,
+          nowMs: Date.now(),
+          skippedForHours: result.skippedForHours,
+        })
+        void refresh(sessionId)
+      } catch {
+        // A refused or dropped request is simply asked again next tick.
+      } finally {
+        waitingRequestRef.current = false
+      }
+    }, WAIT_RETRY_MS)
+    return () => clearInterval(timer)
+  }, [waitingForLine, phase, sessionId, refresh])
+
   const resumeQueue = useCallback(() => {
     const id = stateRef.current.sessionId
     if (id) void startBatch(id)
   }, [startBatch])
 
   const end = useCallback(async () => {
+    setLineWait(null)
     const id = stateRef.current.sessionId
     endingRef.current = true
     connectionRef.current?.disconnect()
@@ -627,6 +682,7 @@ export function useDialer() {
     liveLine,
     wrap: state.wrap,
     notice: state.notice,
+    lineWait,
     error: state.error,
     stats,
     agent,

@@ -99,12 +99,16 @@ export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.en
 
 /**
  * Twilio's concurrent-call cap for the whole account, agents' softphone legs
- * included. Measured at 4 on this account (Twilio's limited concurrency for
- * accounts without an approved Trust Hub business profile). The dialer never
- * dials more lines than fit under it. Raise TWILIO_CONCURRENT_CALLS once
- * Twilio lifts the cap.
+ * included. Measured at 3 on this account (Twilio's limited concurrency for
+ * accounts without an approved Trust Hub business profile): across Sept 14-18
+ * the most calls ever live at once was 3, and every batch that tried a 4th leg
+ * got error 10004. The dialer never dials more lines than fit under it.
+ *
+ * Each rep's own line holds one slot for the whole session, so at 3 two reps
+ * leave room for one prospect leg between them: they take turns. Raise
+ * TWILIO_CONCURRENT_CALLS once Twilio lifts the cap.
  */
-export const TWILIO_CONCURRENT_CALLS = Math.max(2, Number(process.env.TWILIO_CONCURRENT_CALLS) || 4)
+export const TWILIO_CONCURRENT_CALLS = Math.max(2, Number(process.env.TWILIO_CONCURRENT_CALLS) || 3)
 
 /** Ring for this long before giving up on a leg. */
 export const DIAL_TIMEOUT_SECONDS = 25
