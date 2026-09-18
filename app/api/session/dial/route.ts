@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient, webhookUrl } from '@/lib/twilio/client'
-import { env } from '@/lib/env'
 import { toE164, formatPhone } from '@/lib/utils'
 import { DIAL_TIMEOUT_SECONDS } from '@/lib/constants'
 import { availableLines } from '@/lib/twilio/budget'
+import { callerIdsFor } from '@/lib/twilio/caller-ids'
 
 /**
  * Dial one number the agent typed by hand.
@@ -132,9 +132,8 @@ export async function POST(request: Request) {
   try {
     const call = await twilioClient().calls.create({
       to: e164,
-      // A single manual dial has no batch to spread, so take the first number
-      // in the pool for a consistent caller ID on hand-dialed calls.
-      from: env.callerIds[0],
+      // One of this rep's own numbers, rotated like batch lines.
+      from: (await callerIdsFor(user.id))[0],
       timeout: DIAL_TIMEOUT_SECONDS,
       // No batchId: nothing to race against, so the answer webhook bridges
       // this leg straight through.

@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { twilioClient, webhookUrl } from '@/lib/twilio/client'
-import { env } from '@/lib/env'
 import { withinCallingHours } from '@/lib/utils'
 import { availableLines } from '@/lib/twilio/budget'
+import { callerIdsFor } from '@/lib/twilio/caller-ids'
 import { DIAL_TIMEOUT_SECONDS, DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
 export type BatchLine = {
@@ -106,11 +106,10 @@ export async function POST(request: Request) {
   const lines: BatchLine[] = []
   const skipped: string[] = []
 
-  // One caller ID per line. With a single number, a four-line batch queues
-  // behind that number's outbound rate limit and the legs ring seconds apart,
-  // which quietly defeats the point of dialing in parallel. It also spreads
-  // volume across the pool so no one number gets spam-flagged first.
-  const callerIds = env.callerIds
+  // One caller ID per line, from this rep's own numbers, rotated so a short
+  // batch doesn't always dial from the same one. Spreading volume is what
+  // delays the carriers' "Scam Likely" flag.
+  const callerIds = await callerIdsFor(user.id)
 
   await Promise.all(
     reserved.map(async (lead, index) => {
