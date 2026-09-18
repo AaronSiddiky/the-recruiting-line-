@@ -28,9 +28,13 @@ export type CallRow = Pick<
 
 export type LineMeta = {
   callId: string
+  /** Company id, or '' for a tech call. */
   companyId: string
+  /** Display name: the company, or the tech (name, or role · city). */
   companyName: string
   phone: string
+  kind?: 'company' | 'tech'
+  techId?: string
 }
 
 export type Line = LineMeta & {
@@ -169,6 +173,8 @@ function lineFor(state: DialerState, id: string): Line {
     callId: id,
     companyId: meta?.companyId ?? row?.company_id ?? '',
     companyName: meta?.companyName ?? 'Unknown company',
+    kind: meta?.kind ?? 'company',
+    techId: meta?.techId,
     phone: meta?.phone ?? '',
     status: row?.status ?? 'dialing',
     startedAt: row?.started_at ?? null,

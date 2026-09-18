@@ -41,7 +41,7 @@ import {
 import { cn, formatPhone } from '@/lib/utils'
 import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
-export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoicemail: boolean }) {
+export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSize: number; techQueueSize?: number; hasVoicemail: boolean }) {
   const d = useDialer()
   const running = d.phase !== 'idle'
   const now = useNow(d.phase === 'dialing' || d.phase === 'live')
@@ -89,6 +89,29 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
 
         <MusicButton />
 
+        <div role="tablist" aria-label="Who to dial" className="flex rounded-md border border-border-strong p-0.5 text-xs">
+          {(
+            [
+              ['companies', `Companies · ${queueSize}`],
+              ['techs', `Techs · ${techQueueSize}`],
+            ] as const
+          ).map(([q, label]) => (
+            <button
+              key={q}
+              role="tab"
+              type="button"
+              aria-selected={d.queue === q}
+              onClick={() => d.setQueue(q)}
+              className={cn(
+                'cursor-pointer rounded px-2 py-1',
+                d.queue === q ? 'bg-surface-2 font-medium text-foreground' : 'text-muted hover:text-foreground',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="ml-auto flex items-center gap-4">
           {running && <SyncBadge sync={d.sync} />}
           <span className="tnum hidden text-xs text-muted md:inline">
@@ -119,8 +142,8 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
               <Button
                 variant="primary"
                 onClick={() => void d.start()}
-                disabled={queueSize === 0}
-                title={queueSize === 0 ? 'No leads queued. Use the dial pad below.' : undefined}
+                disabled={(d.queue === 'techs' ? techQueueSize : queueSize) === 0}
+                title={(d.queue === 'techs' ? techQueueSize : queueSize) === 0 ? 'Nothing queued in this list. Use the dial pad below.' : undefined}
               >
                 <Play className="size-3.5" aria-hidden />
                 Start dialing
@@ -144,7 +167,7 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
       <div className="min-h-0 flex-1 overflow-auto p-6">
         {d.phase === 'idle' && (
           <div className="flex flex-col items-center gap-8">
-            <IdleState queueSize={queueSize} />
+            <IdleState queueSize={d.queue === 'techs' ? techQueueSize : queueSize} />
             {pad}
             <MicSettings onChange={(id) => void d.setMicDevice(id)} />
             <VoicemailSettings hasVoicemail={hasVoicemail} />
@@ -155,7 +178,7 @@ export function Dialer({ queueSize, hasVoicemail }: { queueSize: number; hasVoic
 
         {d.phase === 'ready' && (
           <div className="flex flex-col items-center gap-8">
-            <ReadyState queueSize={queueSize} onResume={d.resumeQueue} lineWait={d.lineWait} />
+            <ReadyState queueSize={d.queue === 'techs' ? techQueueSize : queueSize} onResume={d.resumeQueue} lineWait={d.lineWait} />
             {pad}
             <MicSettings onChange={(id) => void d.setMicDevice(id)} />
             <VoicemailSettings hasVoicemail={hasVoicemail} />
@@ -792,11 +815,11 @@ function LiveCallPanel({
             <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-2">
               <span>{lines.length > 1 ? otherLinesText(others) : 'Hanging up opens the exit interview.'}</span>
               <Link
-                href={`/companies/${line.companyId}`}
+                href={line.kind === 'tech' ? `/techs?q=${encodeURIComponent(line.phone)}` : `/companies/${line.companyId}`}
                 target="_blank"
                 className="shrink-0 underline hover:text-foreground"
               >
-                Company record
+                {line.kind === 'tech' ? 'Tech record' : 'Company record'}
               </Link>
             </div>
           </div>

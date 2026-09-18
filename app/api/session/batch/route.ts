@@ -12,6 +12,8 @@ export type BatchLine = {
   companyId: string
   companyName: string
   phone: string
+  kind?: 'company' | 'tech'
+  techId?: string
 }
 
 /**
@@ -39,7 +41,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient()
   const { data: session, error: sessionError } = await admin
     .from('call_sessions')
-    .select('id, agent_id, status, conference_name, lines_per_batch, live_call_id')
+    .select('id, agent_id, status, conference_name, lines_per_batch, live_call_id, queue')
     .eq('id', sessionId)
     .maybeSingle()
 
@@ -75,11 +77,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ lines: [], capped: true, cap: budget.cap, agents: budget.agents, inFlight: budget.inFlight })
   }
 
-  const { data: reserved, error } = await admin.rpc('start_dial_batch', {
-    p_session: sessionId,
-    p_agent: user.id,
-    p_limit: limit,
-  })
+  const techQueue = session.queue === 'techs'
+  type Reserved = { call_id: string; batch_id: string; company_id: string; company_name: string; phone: string; tech_id?: string }
+  let reserved: Reserved[] | null = null
+  let error: { message: string } | null = null
+  if (techQueue) {
+    const r = await admin.rpc('start_tech_batch', { p_session: sessionId, p_agent: user.id, p_limit: limit })
+    error = r.error
+    reserved = (r.data ?? []).map((t) => ({ call_id: t.call_id, batch_id: t.batch_id, company_id: '', company_name: t.tech_name, phone: t.phone, tech_id: t.tech_id }))
+  } else {
+    const r = await admin.rpc('start_dial_batch', { p_session: sessionId, p_agent: user.id, p_limit: limit })
+    error = r.error
+    reserved = r.data
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -92,13 +102,15 @@ export async function POST(request: Request) {
 
   // Calling-hours check happens here rather than in SQL: it needs a timezone
   // database, and Postgres would have to be told the local hour for each row.
-  const { data: timezones } = await admin
-    .from('companies')
-    .select('id, timezone')
-    .in(
-      'id',
-      reserved.map((r) => r.company_id),
-    )
+  const { data: timezones } = techQueue
+    ? { data: [] as { id: string; timezone: string | null }[] }
+    : await admin
+        .from('companies')
+        .select('id, timezone')
+        .in(
+          'id',
+          reserved.map((r) => r.company_id),
+        )
 
   const tzByCompany = new Map((timezones ?? []).map((c) => [c.id, c.timezone]))
   const now = new Date()
@@ -113,6 +125,8 @@ export async function POST(request: Request) {
 
   await Promise.all(
     reserved.map(async (lead, index) => {
+      // Techs are people in Arizona; the company map has no entry for them,
+      // which withinCallingHours treats as "unknown, go ahead".
       if (!withinCallingHours(tzByCompany.get(lead.company_id), now)) {
         skipped.push(lead.call_id)
         return
@@ -148,6 +162,8 @@ export async function POST(request: Request) {
           companyId: lead.company_id,
           companyName: lead.company_name,
           phone: lead.phone,
+          kind: lead.tech_id ? 'tech' : 'company',
+          techId: lead.tech_id,
         })
       } catch (twilioError) {
         await admin

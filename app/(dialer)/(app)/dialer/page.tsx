@@ -13,7 +13,7 @@ export default async function DialerPage() {
   // in-flight guards, so the idle screen shows an honest number. Chained .or()
   // clauses are ANDed together, which is what we want here.
   const today = new Date().toISOString().slice(0, 10)
-  const [{ count }, { data: profile }] = await Promise.all([
+  const [{ count }, { data: profile }, { count: techCount }] = await Promise.all([
     supabase
       .from('companies')
       .select('id', { count: 'exact', head: true })
@@ -22,7 +22,13 @@ export default async function DialerPage() {
       .or(`next_follow_up.is.null,next_follow_up.lte.${today}`)
       .or('response.is.null,response.eq.call_back,response.eq.no_answer,response.eq.not_interested,response.eq.not_hiring'),
     supabase.from('profiles').select('voicemail_path').eq('id', user.id).maybeSingle(),
+    supabase
+      .from('techs')
+      .select('id', { count: 'exact', head: true })
+      .not('phone', 'is', null)
+      .in('status', ['new', 'reviewing', 'contacting', 'interviewing'])
+      .or(`next_follow_up.is.null,next_follow_up.lte.${today}`),
   ])
 
-  return <Dialer queueSize={count ?? 0} hasVoicemail={!!profile?.voicemail_path} />
+  return <Dialer queueSize={count ?? 0} techQueueSize={techCount ?? 0} hasVoicemail={!!profile?.voicemail_path} />
 }

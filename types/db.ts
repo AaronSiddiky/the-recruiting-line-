@@ -83,6 +83,8 @@ export type CallSession = {
   last_seen_at: string
   /** The one call bridged to the agent right now; frees itself once that call ends. */
   live_call_id: string | null
+  /** Which list this session dials. */
+  queue: 'companies' | 'techs'
 }
 
 export type DialBatch = {
@@ -157,6 +159,7 @@ export type Tech = {
   status: TechStatus
   applied_at: string | null
   placed_company_id: string | null
+  next_follow_up: string | null
   notes: string
   owner_id: string | null
   created_at: string
@@ -165,7 +168,9 @@ export type Tech = {
 
 export type Call = {
   id: string
-  company_id: string
+  company_id: string | null
+  /** Set instead of company_id when the call was to a technician. */
+  tech_id: string | null
   agent_id: string | null
   session_id: string | null
   batch_id: string | null
@@ -229,6 +234,10 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      start_tech_batch: {
+        Args: { p_session: string; p_agent: string; p_limit?: number }
+        Returns: { call_id: string; batch_id: string; tech_id: string; tech_name: string; phone: string }[]
+      }
       start_dial_batch: {
         Args: { p_session: string; p_agent: string; p_limit?: number }
         Returns: {

@@ -218,6 +218,34 @@ export function useDialer() {
     [applyCallVolume],
   )
 
+  // --- Which list to dial: companies or techs ----------------------------------
+
+  const QUEUE_KEY = 'dialer.queue'
+  const [queue, setQueueState] = useState<'companies' | 'techs'>('companies')
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(QUEUE_KEY)
+      if (saved === 'techs') queueMicrotask(() => setQueueState('techs'))
+    } catch {
+      // Ignore.
+    }
+  }, [])
+  const queueRef = useRef(queue)
+  useEffect(() => {
+    queueRef.current = queue
+  }, [queue])
+  const setQueue = useCallback((q: 'companies' | 'techs') => {
+    setQueueState(q)
+    try {
+      localStorage.setItem(QUEUE_KEY, q)
+    } catch {
+      // Ignore.
+    }
+    // A running session switches in place; the next batch draws from the new list.
+    const id = stateRef.current.sessionId
+    if (id) void postJson('/api/session/queue', { sessionId: id, queue: q }).catch(() => undefined)
+  }, [])
+
   // --- Lines per batch (rep's preference) ------------------------------------
 
   const LINES_KEY = 'dialer.lines'
@@ -355,7 +383,7 @@ export function useDialer() {
     setSync('connecting')
     let session: { sessionId: string; linesPerBatch?: number }
     try {
-      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { lines: linesWantedRef.current })
+      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { lines: linesWantedRef.current, queue: queueRef.current })
     } catch (e) {
       const conflict = e instanceof SessionConflict ? e : null
       if (!conflict) throw e
@@ -366,7 +394,7 @@ export function useDialer() {
           'Each rep should sign in with their own account.\n\nTake over anyway?',
       )
       if (!takeOver) throw new Error('Already dialing in another window. End that session first, or use your own login.')
-      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { force: true, lines: linesWantedRef.current })
+      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { force: true, lines: linesWantedRef.current, queue: queueRef.current })
     }
     linesPerBatchRef.current = session.linesPerBatch ?? DEFAULT_LINES_PER_BATCH
     queueDryRef.current = false
@@ -705,5 +733,7 @@ export function useDialer() {
     linesWanted,
     setLinesWanted,
     setMicDevice,
+    queue,
+    setQueue,
   }
 }

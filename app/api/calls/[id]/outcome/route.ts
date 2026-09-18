@@ -40,7 +40,7 @@ export async function POST(
     .from('calls')
     .update({ outcome, notes: notes ?? null })
     .eq('id', id)
-    .select('id, company_id')
+    .select('id, company_id, tech_id')
     .single()
 
   if (error || !call) {
@@ -63,7 +63,20 @@ export async function POST(
     companyPatch.next_follow_up = nextFollowUp ?? daysFromNowUtc(30)
   }
   if (email) companyPatch.email = email
-  if (Object.keys(companyPatch).length > 0) {
+
+  if (call.tech_id) {
+    // A tech call: the follow-up lands on the tech, and the outcome moves
+    // their pipeline status. "Not hiring" makes no sense for a tech, so it is
+    // treated as a plain call-back.
+    const techPatch: { next_follow_up?: string; email?: string; status?: 'interviewing' | 'placed' | 'rejected' | 'contacting' } = {}
+    if (companyPatch.next_follow_up) techPatch.next_follow_up = companyPatch.next_follow_up
+    if (email) techPatch.email = email
+    if (outcome === 'meeting_booked') techPatch.status = 'interviewing'
+    else if (outcome === 'customer') techPatch.status = 'placed'
+    else if (outcome === 'not_interested' || outcome === 'wrong_number') techPatch.status = 'rejected'
+    else techPatch.status = 'contacting'
+    await supabase.from('techs').update(techPatch).eq('id', call.tech_id)
+  } else if (call.company_id && Object.keys(companyPatch).length > 0) {
     await supabase.from('companies').update(companyPatch).eq('id', call.company_id)
   }
 

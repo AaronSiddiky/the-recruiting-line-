@@ -25,7 +25,8 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
 
-  const { force, lines } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean; lines?: number }
+  const { force, lines, queue } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean; lines?: number; queue?: string }
+  const queueName = queue === 'techs' ? 'techs' : 'companies'
   // The rep's chosen line count; the batch route still trims it to what
   // Twilio's concurrent-call cap allows at the moment of dialing.
   const linesPerBatch = Math.min(6, Math.max(1, Math.round(Number(lines)) || DEFAULT_LINES_PER_BATCH))
@@ -66,8 +67,9 @@ export async function POST(request: Request) {
       agent_id: user.id,
       conference_name: `rl-${randomUUID()}`,
       lines_per_batch: linesPerBatch,
+      queue: queueName,
     })
-    .select('id, conference_name, lines_per_batch')
+    .select('id, conference_name, lines_per_batch, queue')
     .single()
 
   if (error || !session) {
@@ -78,5 +80,6 @@ export async function POST(request: Request) {
     sessionId: session.id,
     conferenceName: session.conference_name,
     linesPerBatch: session.lines_per_batch,
+    queue: session.queue,
   })
 }

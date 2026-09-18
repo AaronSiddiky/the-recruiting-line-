@@ -97,7 +97,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/session
   const { data: calls, error } = await supabase
     .from('calls')
     .select(
-      'id, company_id, status, amd_result, outcome, started_at, answered_at, ended_at, duration_seconds, notes, updated_at',
+      'id, company_id, tech_id, status, amd_result, outcome, started_at, answered_at, ended_at, duration_seconds, notes, updated_at',
     )
     .eq('session_id', id)
     .order('started_at', { ascending: true })

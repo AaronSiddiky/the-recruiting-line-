@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient()
   const { data: call } = await admin
     .from('calls')
-    .select('company_id, recording_path')
+    .select('company_id, tech_id, recording_path')
     .eq('id', callId)
     .maybeSingle()
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
   after(async () => {
     try {
-      const path = await archiveRecording(callId, recordingSid, call.company_id)
+      const path = await archiveRecording(callId, recordingSid, call.company_id ?? `tech-${call.tech_id ?? 'unknown'}`)
 
       await admin
         .from('calls')
