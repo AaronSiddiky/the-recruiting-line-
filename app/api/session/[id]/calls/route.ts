@@ -45,9 +45,12 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/session
 
   const nowIso = new Date().toISOString()
   // Heartbeat: this poll proves the dialer is open, which is what stops a
-  // second window from cutting the session off.
+  // second window from cutting the session off, and what the call budget uses
+  // to count this rep's line. Awaited: a fire-and-forget write can be dropped
+  // when the function is frozen after responding, and a stale heartbeat makes
+  // the budget forget a line Twilio is still holding.
   if (session.status === 'active') {
-    void supabase.from('call_sessions').update({ last_seen_at: nowIso }).eq('id', id).then(() => undefined)
+    await supabase.from('call_sessions').update({ last_seen_at: nowIso }).eq('id', id)
   }
   const admin = createAdminClient()
   const { data: pending } = await admin
