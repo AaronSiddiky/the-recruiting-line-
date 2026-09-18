@@ -140,6 +140,29 @@ export type ClientTouchpoint = {
   created_at: string
 }
 
+export type TechStatus = 'new' | 'reviewing' | 'contacting' | 'interviewing' | 'placed' | 'rejected'
+
+/** A technician we could place. Name and phone are the point; the rest is context. */
+export type Tech = {
+  id: string
+  name: string | null
+  phone: string | null
+  email: string | null
+  city: string | null
+  state: string | null
+  title: string | null
+  employer: string | null
+  experience: string | null
+  source: string | null
+  status: TechStatus
+  applied_at: string | null
+  placed_company_id: string | null
+  notes: string
+  owner_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type Call = {
   id: string
   company_id: string
@@ -200,6 +223,7 @@ export type Database = {
       spotify_tokens: Table<SpotifyToken>
       clients: Table<Client>
       client_touchpoints: Table<ClientTouchpoint>
+      techs: Table<Tech>
       dial_batches: Table<DialBatch>
       calls: Table<Call>
     }

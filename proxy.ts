@@ -78,6 +78,7 @@ export const config = {
     '/stats/:path*',
     '/clients/:path*',
     '/interested/:path*',
+    '/techs/:path*',
     '/health/:path*',
     '/api/clients/:path*',
     '/companies/:path*',
