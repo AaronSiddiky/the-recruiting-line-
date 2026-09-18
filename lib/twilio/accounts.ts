@@ -86,11 +86,12 @@ export function accountBySid(sid: string | null | undefined): TwilioAccount | nu
 
 /**
  * Which account each rep dials through, by login email. Override with
- * TWILIO_ACCOUNT_BY_REP, e.g. "leonard@holterholdings.com=second". A rep not
+ * TWILIO_ACCOUNT_BY_REP, e.g. "aaron.siddiky@columbia.edu=second". A rep not
  * listed, or listed for an account that isn't configured, uses the primary.
  */
 const DEFAULT_ACCOUNT_BY_REP: Record<string, TwilioAccount['key']> = {
-  'leonard@holterholdings.com': 'second',
+  // Aaron moves to the new account; Leonard keeps the original and its numbers.
+  'aaron.siddiky@columbia.edu': 'second',
 }
 
 function accountKeyForEmail(email: string | null | undefined): TwilioAccount['key'] {
