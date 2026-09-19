@@ -12,11 +12,16 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
 
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, email')
-    .eq('id', user.id)
-    .single()
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const [{ data: profile }, { count: techsDue }] = await Promise.all([
+    supabase.from('profiles').select('full_name, email').eq('id', user.id).single(),
+    // Weekly touch points that are due: shown as a badge on Techs.
+    supabase
+      .from('techs')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['contacting', 'screened', 'interviewing', 'presented'])
+      .lte('next_follow_up', today),
+  ])
 
   const name = profile?.full_name || profile?.email || user.email || ''
 
@@ -38,7 +43,8 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
           <NavLink href="/dialer" icon="dialer">Dialer</NavLink>
           <NavLink href="/interested" icon="interested">Interested</NavLink>
           <NavLink href="/clients" icon="clients">Clients</NavLink>
-          <NavLink href="/techs" icon="techs">Techs</NavLink>
+          <NavLink href="/techs" icon="techs" badge={techsDue ?? 0}>Techs</NavLink>
+          <NavLink href="/tech-interviews" icon="techInterviews">Tech interviews</NavLink>
           <NavLink href="/stats" icon="stats">Stats</NavLink>
           <NavLink href="/health" icon="health">Phone health</NavLink>
         </nav>

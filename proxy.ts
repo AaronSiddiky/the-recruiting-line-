@@ -79,6 +79,7 @@ export const config = {
     '/clients/:path*',
     '/interested/:path*',
     '/techs/:path*',
+    '/tech-interviews/:path*',
     '/health/:path*',
     '/api/clients/:path*',
     '/companies/:path*',

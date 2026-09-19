@@ -22,6 +22,14 @@ const patchSchema = z.object({
   payment_terms: text(500).nullable().optional(),
   role_brief: text(2000).nullable().optional(),
   notes: text(10_000).optional(),
+  role_type: z.enum(['install', 'service', 'both']).nullable().optional(),
+  requires_own_tools: z.boolean().nullable().optional(),
+  commission_pay: z.boolean().nullable().optional(),
+  min_years: z.number().min(0).max(60).nullable().optional(),
+  epa_required: z.boolean().nullable().optional(),
+  pay_min: z.number().int().min(0).max(500).nullable().optional(),
+  pay_max: z.number().int().min(0).max(500).nullable().optional(),
+  openings: z.number().int().min(0).max(100).optional(),
 })
 
 async function user() {

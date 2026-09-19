@@ -10,8 +10,11 @@ export default async function TechsPage(props: PageProps<'/techs'>) {
 
   const supabase = await createClient()
   let query = supabase.from('techs').select('*').order('applied_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
-  const STATUSES = new Set<string>(['new', 'reviewing', 'contacting', 'interviewing', 'placed', 'rejected'])
-  if (STATUSES.has(status)) query = query.eq('status', status as TechStatus)
+  const STATUSES = new Set<string>(['new', 'reviewing', 'contacting', 'screened', 'interviewing', 'presented', 'placed', 'rejected'])
+  if (status === 'due') {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    query = query.in('status', ['contacting', 'screened', 'interviewing', 'presented']).lte('next_follow_up', today)
+  } else if (STATUSES.has(status)) query = query.eq('status', status as TechStatus)
   if (q) {
     const safe = q.replace(/[,()]/g, ' ')
     query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,city.ilike.%${safe}%,title.ilike.%${safe}%,employer.ilike.%${safe}%,experience.ilike.%${safe}%`)

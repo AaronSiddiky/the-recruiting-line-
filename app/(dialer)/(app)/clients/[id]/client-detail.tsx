@@ -114,6 +114,28 @@ export function ClientDetail({ client, profiles, touchpoints }: { client: Client
         <div className="sm:col-span-3"><ContractFile clientId={client.id} hasFile={!!client.contract_path} onChange={() => router.refresh()} /></div>
       </section>
 
+      {/* Requirements (used to match techs) */}
+      <h2 className="mt-8 mb-3 text-sm font-semibold">What they need in a tech <span className="ml-2 font-normal text-muted-2">used to rank techs for this client</span></h2>
+      <section className="grid gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-4">
+        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted">Install or service</span>
+          <select defaultValue={client.role_type ?? ''} onChange={(e) => save({ role_type: e.target.value || null })} className={field}>
+            <option value="">—</option><option value="install">Install</option><option value="service">Service</option><option value="both">Both</option>
+          </select>
+        </label>
+        {([['requires_own_tools', 'Own tools required'], ['commission_pay', 'Commission pay'], ['epa_required', 'EPA cert required']] as const).map(([k, l]) => (
+          <label key={k} className="flex flex-col gap-1"><span className="text-xs font-medium text-muted">{l}</span>
+            <select defaultValue={client[k] == null ? '' : client[k] ? 'yes' : 'no'} onChange={(e) => save({ [k]: e.target.value === '' ? null : e.target.value === 'yes' })} className={field}>
+              <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
+            </select>
+          </label>
+        ))}
+        {([['min_years', 'Min years HVAC'], ['pay_min', 'Pay from ($/hr)'], ['pay_max', 'Pay up to ($/hr)'], ['openings', 'Open seats']] as const).map(([k, l]) => (
+          <label key={k} className="flex flex-col gap-1"><span className="text-xs font-medium text-muted">{l}</span>
+            <input type="number" min={0} defaultValue={client[k] ?? ''} onBlur={(e) => { const v = e.target.value.trim(); save({ [k]: v === '' ? (k === 'openings' ? 0 : null) : Number(v) }) }} className={`${field} tnum`} />
+          </label>
+        ))}
+      </section>
+
       {/* Touch points */}
       <h2 className="mt-8 mb-3 text-sm font-semibold">Touch points <span className="tnum ml-2 font-normal text-muted-2">{touchpoints.length}</span></h2>
       <TouchForm clientId={client.id} onSaved={() => router.refresh()} />

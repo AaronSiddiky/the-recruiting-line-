@@ -26,7 +26,7 @@ export default async function DialerPage() {
       .from('techs')
       .select('id', { count: 'exact', head: true })
       .not('phone', 'is', null)
-      .in('status', ['new', 'reviewing', 'contacting', 'interviewing'])
+      .in('status', ['new', 'reviewing', 'contacting', 'screened', 'interviewing', 'presented'])
       .or(`next_follow_up.is.null,next_follow_up.lte.${today}`),
   ])
 

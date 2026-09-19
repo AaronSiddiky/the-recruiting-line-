@@ -127,6 +127,14 @@ export type Client = {
   role_brief: string | null
   contract_path: string | null
   notes: string
+  role_type: RoleType | null
+  requires_own_tools: boolean | null
+  commission_pay: boolean | null
+  min_years: number | null
+  epa_required: boolean | null
+  pay_min: number | null
+  pay_max: number | null
+  openings: number
   created_at: string
   updated_at: string
 }
@@ -142,7 +150,9 @@ export type ClientTouchpoint = {
   created_at: string
 }
 
-export type TechStatus = 'new' | 'reviewing' | 'contacting' | 'interviewing' | 'placed' | 'rejected'
+export type TechStatus = 'new' | 'reviewing' | 'contacting' | 'screened' | 'interviewing' | 'presented' | 'placed' | 'rejected'
+export type RoleType = 'install' | 'service' | 'both'
+export type EpaCert = 'none' | 'type1' | 'type2' | 'type3' | 'universal'
 
 /** A technician we could place. Name and phone are the point; the rest is context. */
 export type Tech = {
@@ -160,8 +170,46 @@ export type Tech = {
   applied_at: string | null
   placed_company_id: string | null
   next_follow_up: string | null
+  years_hvac: number | null
+  epa_cert: EpaCert | null
+  role_pref: RoleType | null
+  own_tools: boolean | null
+  drivers_license: boolean | null
+  commission_ok: boolean | null
+  pay_min: number | null
+  available_from: string | null
+  max_commute_miles: number | null
+  rating: number | null
+  interview_at: string | null
+  interview_notes: string | null
+  last_touch_at: string | null
   notes: string
   owner_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type TechTouchpoint = {
+  id: string
+  tech_id: string
+  user_id: string | null
+  at: string
+  channel: TouchChannel
+  summary: string
+  next_touch: string | null
+  call_id: string | null
+  created_at: string
+}
+
+export type PresentationStatus = 'proposed' | 'presented' | 'interviewing' | 'hired' | 'declined'
+export type TechPresentation = {
+  id: string
+  tech_id: string
+  client_id: string
+  status: PresentationStatus
+  match_score: number | null
+  notes: string
+  created_by: string | null
   created_at: string
   updated_at: string
 }
@@ -229,6 +277,8 @@ export type Database = {
       clients: Table<Client>
       client_touchpoints: Table<ClientTouchpoint>
       techs: Table<Tech>
+      tech_touchpoints: Table<TechTouchpoint>
+      tech_presentations: Table<TechPresentation>
       dial_batches: Table<DialBatch>
       calls: Table<Call>
     }

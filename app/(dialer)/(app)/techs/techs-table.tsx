@@ -1,22 +1,16 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Trash2, Upload, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { createTech, deleteTech, importTechs, updateTech } from '@/lib/actions/techs'
 import { formatPhone } from '@/lib/utils'
-import type { Profile, Tech, TechStatus } from '@/types/db'
+import type { Profile, Tech } from '@/types/db'
 
-const STATUSES: { value: TechStatus; label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' }[] = [
-  { value: 'new', label: 'New', tone: 'neutral' },
-  { value: 'reviewing', label: 'Reviewing', tone: 'neutral' },
-  { value: 'contacting', label: 'Contacting', tone: 'warn' },
-  { value: 'interviewing', label: 'Interviewing', tone: 'warn' },
-  { value: 'placed', label: 'Placed', tone: 'good' },
-  { value: 'rejected', label: 'Rejected', tone: 'bad' },
-]
+import { STAGES as STATUSES } from './[id]/tech-detail'
 
 type Client = { id: string; name: string }
 
@@ -65,7 +59,8 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
           className="h-8 w-64 rounded-md border border-border-strong bg-background px-2 text-sm"
         />
         <select value={status} onChange={(e) => setParam('status', e.target.value)} aria-label="Status" className="h-8 rounded-md border border-border-strong bg-background px-2 text-sm">
-          <option value="">Any status</option>
+          <option value="">Any stage</option>
+          <option value="due">Touch due</option>
           {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <span className="tnum text-xs text-muted">{rows.length} shown</span>
@@ -77,6 +72,9 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
 
       {!q && !status && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-border-subtle px-4 py-1.5 text-xs text-muted">
+          <button type="button" onClick={() => setParam('status', 'due')} className="cursor-pointer font-medium text-bad hover:underline">
+            Touch due <span className="tnum">{rows.filter((r) => r.next_follow_up && r.next_follow_up <= new Date().toISOString().slice(0, 10) && ['contacting', 'screened', 'interviewing', 'presented'].includes(r.status)).length}</span>
+          </button>
           {counts.map((s) => (
             <button key={s.value} type="button" onClick={() => setParam('status', s.value)} className="cursor-pointer hover:text-foreground">
               {s.label} <span className="tnum text-foreground">{s.n}</span>
@@ -99,7 +97,7 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10">
               <tr>
-                {['Name', 'Phone', 'Location', 'Role', 'Experience', 'Applied', 'Status', 'Placed at', 'Owner', ''].map((h) => (
+                {['Name', 'Phone', 'Location', 'Role', 'Experience', 'Next touch', 'Stage', 'Placed at', 'Owner', ''].map((h) => (
                   <th key={h} className="border-b border-border-subtle bg-surface px-3 py-2 text-left text-xs font-medium whitespace-nowrap text-muted">{h}</th>
                 ))}
               </tr>
@@ -108,7 +106,7 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
               {rows.map((t) => (
                 <tr key={t.id} className="group align-top hover:bg-surface">
                   <td className="border-b border-border-subtle px-2 py-1.5">
-                    <input defaultValue={t.name ?? ''} placeholder="Name" onBlur={(e) => e.target.value.trim() !== (t.name ?? '') && save(t.id, { name: e.target.value.trim() || null })} className={`${cell} font-medium`} />
+                    <Link href={`/techs/${t.id}`} className="block px-1 font-medium hover:text-accent hover:underline">{t.name ?? 'Unnamed'}</Link>
                     <input defaultValue={t.email ?? ''} placeholder="email" onBlur={(e) => e.target.value.trim() !== (t.email ?? '') && save(t.id, { email: e.target.value.trim() || null })} className={`${cell} text-xs text-muted`} />
                   </td>
                   <td className="border-b border-border-subtle px-2 py-1.5 whitespace-nowrap">
@@ -126,8 +124,8 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
                     <textarea defaultValue={t.experience ?? ''} rows={2} placeholder="Earlier roles, years, certs" onBlur={(e) => e.target.value.trim() !== (t.experience ?? '') && save(t.id, { experience: e.target.value.trim() || null })} className={`${cell} w-64 resize-y text-xs`} />
                   </td>
                   <td className="tnum border-b border-border-subtle px-2 py-1.5 whitespace-nowrap">
-                    <input type="date" defaultValue={t.applied_at ?? ''} onChange={(e) => save(t.id, { applied_at: e.target.value || null })} className={`${cell} tnum`} />
-                    {t.source && <span className="block px-1 text-xs text-muted">{t.source}</span>}
+                    <input type="date" defaultValue={t.next_follow_up ?? ''} onChange={(e) => save(t.id, { next_follow_up: e.target.value || null })} className={`${cell} tnum ${t.next_follow_up && t.next_follow_up <= new Date().toISOString().slice(0, 10) && !['placed', 'rejected', 'new', 'reviewing'].includes(t.status) ? 'font-medium text-bad' : ''}`} />
+                    <span className="block px-1 text-xs text-muted">{t.source ?? ''}{t.applied_at ? ` · applied ${t.applied_at}` : ''}</span>
                   </td>
                   <td className="border-b border-border-subtle px-2 py-1.5 whitespace-nowrap">
                     <select value={t.status} onChange={(e) => save(t.id, { status: e.target.value })} className={`${cell} cursor-pointer`}>

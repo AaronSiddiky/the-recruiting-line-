@@ -17,7 +17,20 @@ const patchSchema = z.object({
   employer: text(160),
   experience: text(4000),
   source: text(100),
-  status: z.enum(['new', 'reviewing', 'contacting', 'interviewing', 'placed', 'rejected']).optional(),
+  status: z.enum(['new', 'reviewing', 'contacting', 'screened', 'interviewing', 'presented', 'placed', 'rejected']).optional(),
+  years_hvac: z.number().min(0).max(60).nullable().optional(),
+  epa_cert: z.enum(['none', 'type1', 'type2', 'type3', 'universal']).nullable().optional(),
+  role_pref: z.enum(['install', 'service', 'both']).nullable().optional(),
+  own_tools: z.boolean().nullable().optional(),
+  drivers_license: z.boolean().nullable().optional(),
+  commission_ok: z.boolean().nullable().optional(),
+  pay_min: z.number().int().min(0).max(500).nullable().optional(),
+  available_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  max_commute_miles: z.number().int().min(0).max(300).nullable().optional(),
+  rating: z.number().int().min(1).max(5).nullable().optional(),
+  interview_at: z.string().datetime({ offset: true }).nullable().optional(),
+  interview_notes: z.string().trim().max(10_000).nullable().optional(),
+  next_follow_up: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   applied_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   placed_company_id: z.string().uuid().nullable().optional(),
   notes: z.string().trim().max(10_000).optional(),
@@ -71,6 +84,8 @@ export async function updateTech(id: string, patch: unknown) {
   const { error } = await supabase.from('techs').update(n.values as never).eq('id', id)
   if (error) return { error: error.code === '23505' ? 'Another tech already has that phone number.' : error.message }
   revalidatePath('/techs')
+  revalidatePath(`/techs/${id}`)
+  revalidatePath('/tech-interviews')
   return { error: null }
 }
 
@@ -134,4 +149,63 @@ export async function importTechs(csvText: string) {
   }
   revalidatePath('/techs')
   return { inserted, skipped, errors }
+}
+
+const touchSchema = z.object({
+  at: z.string().datetime({ offset: true }).optional(),
+  channel: z.enum(['call', 'email', 'text', 'meeting', 'other']),
+  summary: z.string().trim().min(1).max(4000),
+  next_touch: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+})
+
+/** Log a touch point; the database schedules the next one a week out unless a date is given. */
+export async function addTechTouch(techId: string, input: unknown) {
+  const parsed = touchSchema.safeParse(input)
+  if (!parsed.success) return { error: 'Write a line about what happened.' }
+  const { user, supabase } = await me()
+  if (!user) return { error: 'Not signed in.' }
+  const { error } = await supabase.from('tech_touchpoints').insert({ tech_id: techId, user_id: user.id, ...parsed.data } as never)
+  if (error) return { error: error.message }
+  // A first real conversation moves a fresh applicant along.
+  await supabase.from('techs').update({ status: 'contacting' } as never).eq('id', techId).in('status', ['new', 'reviewing'])
+  revalidatePath(`/techs/${techId}`)
+  revalidatePath('/techs')
+  return { error: null }
+}
+
+export async function deleteTechTouch(id: string, techId: string) {
+  const { user, supabase } = await me()
+  if (!user) return { error: 'Not signed in.' }
+  const { error } = await supabase.from('tech_touchpoints').delete().eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath(`/techs/${techId}`)
+  return { error: null }
+}
+
+/** Put a tech forward to a client. Moves the tech to "presented". */
+export async function presentTech(techId: string, clientId: string, score: number | null) {
+  const { user, supabase } = await me()
+  if (!user) return { error: 'Not signed in.' }
+  const { error } = await supabase
+    .from('tech_presentations')
+    .upsert({ tech_id: techId, client_id: clientId, status: 'presented', match_score: score, created_by: user.id } as never, { onConflict: 'tech_id,client_id' })
+  if (error) return { error: error.message }
+  await supabase.from('techs').update({ status: 'presented' } as never).eq('id', techId).in('status', ['new', 'reviewing', 'contacting', 'screened', 'interviewing'])
+  revalidatePath(`/techs/${techId}`)
+  revalidatePath('/techs')
+  return { error: null }
+}
+
+export async function setPresentationStatus(id: string, techId: string, status: 'proposed' | 'presented' | 'interviewing' | 'hired' | 'declined') {
+  const { user, supabase } = await me()
+  if (!user) return { error: 'Not signed in.' }
+  const { data, error } = await supabase.from('tech_presentations').update({ status } as never).eq('id', id).select('client_id').single()
+  if (error) return { error: error.message }
+  if (status === 'hired' && data) {
+    const { data: client } = await supabase.from('clients').select('company_id').eq('id', (data as { client_id: string }).client_id).single()
+    await supabase.from('techs').update({ status: 'placed', placed_company_id: (client as { company_id: string } | null)?.company_id ?? null } as never).eq('id', techId)
+  }
+  revalidatePath(`/techs/${techId}`)
+  revalidatePath('/techs')
+  return { error: null }
 }

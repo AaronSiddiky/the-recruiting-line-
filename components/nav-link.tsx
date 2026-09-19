@@ -2,18 +2,21 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Activity, BarChart3, Handshake, Phone, Table2, ThumbsUp, Users, Wrench, type LucideIcon } from 'lucide-react'
+import { Activity, BarChart3, CalendarClock, Handshake, Phone, Table2, ThumbsUp, Users, Wrench, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const ICONS: Record<string, LucideIcon> = { leads: Users, crm: Table2, dialer: Phone, interested: ThumbsUp, clients: Handshake, techs: Wrench, stats: BarChart3, health: Activity }
+const ICONS: Record<string, LucideIcon> = { leads: Users, crm: Table2, dialer: Phone, interested: ThumbsUp, clients: Handshake, techs: Wrench, techInterviews: CalendarClock, stats: BarChart3, health: Activity }
 
 export function NavLink({
   href,
   icon,
+  badge,
   children,
 }: {
   href: string
   icon: keyof typeof ICONS
+  /** Small count on the right, e.g. techs due for their weekly touch. */
+  badge?: number
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -39,6 +42,11 @@ export function NavLink({
     >
       <Icon className="size-4 shrink-0" aria-hidden />
       <span className="hidden md:inline">{children}</span>
+      {badge ? (
+        <span className="tnum ml-auto hidden rounded-full bg-bad px-1.5 text-[10px] leading-4 font-semibold text-white md:inline" title={`${badge} due`}>
+          {badge}
+        </span>
+      ) : null}
     </Link>
   )
 }

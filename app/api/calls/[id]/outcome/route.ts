@@ -65,17 +65,39 @@ export async function POST(
   if (email) companyPatch.email = email
 
   if (call.tech_id) {
-    // A tech call: the follow-up lands on the tech, and the outcome moves
-    // their pipeline status. "Not hiring" makes no sense for a tech, so it is
-    // treated as a plain call-back.
-    const techPatch: { next_follow_up?: string; email?: string; status?: 'interviewing' | 'placed' | 'rejected' | 'contacting' } = {}
-    if (companyPatch.next_follow_up) techPatch.next_follow_up = companyPatch.next_follow_up
+    // A tech call is a touch point. The database schedules the next touch a
+    // week out; outcomes that imply a different date pass it explicitly.
+    const next =
+      outcome === 'no_answer'
+        ? (nextFollowUp ?? daysFromNowUtc(1))
+        : outcome === 'call_back'
+          ? (nextFollowUp ?? null)
+          : null
+    const label: Record<string, string> = {
+      meeting_booked: 'Interested', call_back: 'Call back', no_answer: 'No answer', not_interested: 'Not interested',
+      wrong_number: 'Wrong number', customer: 'Placed', not_hiring: 'Not available right now',
+    }
+    await supabase.from('tech_touchpoints').insert({
+      tech_id: call.tech_id,
+      user_id: user.id,
+      channel: 'call',
+      summary: [label[outcome] ?? outcome, notes?.trim()].filter(Boolean).join(' — '),
+      next_touch: next,
+      call_id: call.id,
+    } as never)
+
+    const { data: tech } = await supabase.from('techs').select('status').eq('id', call.tech_id).single()
+    const current = (tech as { status?: string } | null)?.status ?? 'new'
+    const early = current === 'new' || current === 'reviewing' || current === 'contacting'
+    let status: string | null = null
+    if (outcome === 'customer') status = 'placed'
+    else if (outcome === 'not_interested' || outcome === 'wrong_number') status = 'rejected'
+    else if (outcome === 'meeting_booked' && early) status = 'screened'
+    else if (current === 'new' || current === 'reviewing') status = 'contacting'
+    const techPatch: Record<string, string> = {}
+    if (status) techPatch.status = status
     if (email) techPatch.email = email
-    if (outcome === 'meeting_booked') techPatch.status = 'interviewing'
-    else if (outcome === 'customer') techPatch.status = 'placed'
-    else if (outcome === 'not_interested' || outcome === 'wrong_number') techPatch.status = 'rejected'
-    else techPatch.status = 'contacting'
-    await supabase.from('techs').update(techPatch).eq('id', call.tech_id)
+    if (Object.keys(techPatch).length) await supabase.from('techs').update(techPatch as never).eq('id', call.tech_id)
   } else if (call.company_id && Object.keys(companyPatch).length > 0) {
     await supabase.from('companies').update(companyPatch).eq('id', call.company_id)
   }
