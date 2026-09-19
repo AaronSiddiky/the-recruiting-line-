@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import type { CallOutcome } from '@/types/db'
 import type { Line } from './use-dialer'
 import { formatClock } from './dialer-machine'
+import { ReferralCapture } from './referral-capture'
 
 const TONE_RING = {
   good: 'border-good text-good bg-good-bg',
@@ -47,6 +48,7 @@ export function ExitInterview({
   talkSeconds,
   saveLabel = 'Save and dial next',
   defaultOutcome = null,
+  onSwitchKind,
   onDone,
 }: {
   call: Line
@@ -56,6 +58,8 @@ export function ExitInterview({
   saveLabel?: string
   /** Pre-selected, e.g. "No answer" after a voicemail drop. */
   defaultOutcome?: CallOutcome | null
+  /** Turn this into a call to a technician and show that form instead. */
+  onSwitchKind?: () => void
   onDone: () => void
 }) {
   const [outcome, setOutcome] = useState<CallOutcome | null>(defaultOutcome)
@@ -150,6 +154,11 @@ export function ExitInterview({
             )}
           </p>
           <h2 className="text-base font-semibold">{call.companyName}</h2>
+          {onSwitchKind && (
+            <button type="button" onClick={onSwitchKind} className="mt-0.5 cursor-pointer text-xs text-muted underline hover:text-foreground">
+              This was a technician, not a company
+            </button>
+          )}
         </div>
 
         <div className="space-y-4 px-5 py-4">
@@ -212,6 +221,8 @@ export function ExitInterview({
               />
             </label>
           )}
+
+          <ReferralCapture fromCompanyId={call.companyId || null} />
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Notes</span>

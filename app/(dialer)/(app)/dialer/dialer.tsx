@@ -242,6 +242,7 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
             endedBy={d.wrap.endedBy}
             talkSeconds={d.wrap.talkSeconds}
             saveLabel={d.mode === 'manual' ? 'Save' : 'Save and dial next'}
+            onSwitchKind={() => void d.setWrapKind('company')}
             onDone={d.finishWrapup}
           />
         ) : (
@@ -251,6 +252,7 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
             talkSeconds={d.wrap.talkSeconds}
             saveLabel={d.mode === 'manual' ? 'Save' : 'Save and dial next'}
             defaultOutcome={d.wasVoicemailLeft(d.wrap.callId) ? 'no_answer' : null}
+            onSwitchKind={() => void d.setWrapKind('tech')}
             onDone={d.finishWrapup}
           />
         )

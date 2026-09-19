@@ -73,6 +73,11 @@ export function TechDetail({ tech, matches, touchpoints, presentations }: { tech
             {tech.email && <a href={`mailto:${tech.email}`} className="inline-flex items-center gap-1 hover:text-foreground"><Mail className="size-3.5" aria-hidden />{tech.email}</a>}
           </div>
           <p className="mt-1 text-sm">{[tech.title, tech.employer].filter(Boolean).join(' at ')}</p>
+          {tech.referred_by && (
+            <p className="mt-0.5 text-xs text-muted">
+              Referred by {tech.referred_by_tech_id ? <Link href={`/techs/${tech.referred_by_tech_id}`} className="underline hover:text-foreground">{tech.referred_by}</Link> : tech.referred_by}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">

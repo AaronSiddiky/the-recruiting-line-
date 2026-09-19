@@ -557,6 +557,18 @@ export function useDialer() {
     if (current.mode === 'batch' && current.sessionId) void startBatch(current.sessionId)
   }, [startBatch])
 
+  /** "This was actually a technician" (or a company), after the call. */
+  const setWrapKind = useCallback(async (kind: 'company' | 'tech') => {
+    const wrap = stateRef.current.wrap
+    if (!wrap) return
+    try {
+      const res = await postJson<{ techId?: string; name?: string }>(`/api/calls/${wrap.callId}/kind`, { kind })
+      dispatch({ type: 'WRAP_KIND', kind, techId: res.techId, name: res.name })
+    } catch (e) {
+      dispatch({ type: 'ERROR', message: e instanceof Error ? e.message : 'Could not switch the call.' })
+    }
+  }, [])
+
   const dismissNotice = useCallback(() => dispatch({ type: 'DISMISS_NOTICE' }), [])
 
   // --- Transitions with side effects -----------------------------------------
@@ -727,6 +739,7 @@ export function useDialer() {
     toggleMute,
     sendDigits,
     finishWrapup,
+    setWrapKind,
     dismissNotice,
     callVolume,
     setCallVolume,

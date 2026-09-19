@@ -59,6 +59,61 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Session already ended.' }, { status: 409 })
   }
 
+  // A number already in Techs is a call to that person, not to a shop.
+  const { data: tech } = await admin
+    .from('techs')
+    .select('id, name, title, city, status')
+    .eq('phone', e164)
+    .maybeSingle()
+
+  if (tech) {
+    const t = tech as { id: string; name: string | null; title: string | null; city: string | null }
+    const account = await accountForAgent(user.id)
+    const budget = await availableLines(account)
+    if (budget.available < 1) {
+      return NextResponse.json(
+        { error: `Twilio's call limit (${budget.cap} at once, softphones included) is full right now. Try again in a moment.` },
+        { status: 429 },
+      )
+    }
+    const { data: callRow, error: callError } = await admin
+      .from('calls')
+      .insert({ tech_id: t.id, agent_id: user.id, session_id: sessionId, status: 'dialing' })
+      .select('id')
+      .single()
+    if (callError || !callRow) {
+      return NextResponse.json({ error: callError?.message ?? 'Could not create the call record.' }, { status: 500 })
+    }
+    try {
+      const call = await twilioClient(account).calls.create({
+        to: e164,
+        from: (await callerIdsFor(user.id))[0],
+        timeout: DIAL_TIMEOUT_SECONDS,
+        url: webhookUrl('/api/twilio/answer', { callId: callRow.id, conference: session.conference_name }),
+        statusCallback: webhookUrl('/api/twilio/status', { callId: callRow.id }),
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      })
+      await admin.from('calls').update({ call_sid: call.sid }).eq('id', callRow.id)
+      return NextResponse.json({
+        line: {
+          callId: callRow.id,
+          companyId: '',
+          companyName: t.name || [t.title, t.city].filter(Boolean).join(' · ') || formatPhone(e164),
+          phone: e164,
+          kind: 'tech',
+          techId: t.id,
+        },
+      })
+    } catch (twilioError) {
+      const message = twilioError instanceof Error ? twilioError.message : 'Dial failed.'
+      await admin
+        .from('calls')
+        .update({ status: 'failed', ended_at: new Date().toISOString(), notes: `Manual dial failed: ${message}` })
+        .eq('id', callRow.id)
+      return NextResponse.json({ error: message }, { status: 502 })
+    }
+  }
+
   // Find or create the company this number belongs to.
   let { data: company } = await admin
     .from('companies')

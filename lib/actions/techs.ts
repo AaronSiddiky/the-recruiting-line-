@@ -209,3 +209,78 @@ export async function setPresentationStatus(id: string, techId: string, status: 
   revalidatePath('/techs')
   return { error: null }
 }
+
+const referralSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  phone: z.string().trim().min(7).max(40),
+  /** The tech who gave the referral, if the call was to a tech. */
+  fromTechId: z.string().uuid().nullable().optional(),
+  /** The company we were speaking to, if the call was to a shop. */
+  fromCompanyId: z.string().uuid().nullable().optional(),
+  note: z.string().trim().max(500).optional(),
+})
+
+/**
+ * Take a referral mid-call: a name and a number become a tech in the queue,
+ * with a trail back to whoever named them. Idempotent on the phone number, so
+ * a referral we already know updates rather than duplicates.
+ */
+export async function addReferral(input: unknown) {
+  const parsed = referralSchema.safeParse(input)
+  if (!parsed.success) return { error: 'A name and a phone number are needed.' }
+  const { user, supabase } = await me()
+  if (!user) return { error: 'Not signed in.' }
+  const { name, phone, fromTechId, fromCompanyId, note } = parsed.data
+
+  const e164 = toE164(phone)
+  if (!e164) return { error: `"${phone}" is not a dialable number.` }
+
+  let referredBy: string | null = null
+  if (fromTechId) {
+    const { data } = await supabase.from('techs').select('name').eq('id', fromTechId).maybeSingle()
+    referredBy = (data as { name?: string | null } | null)?.name ?? null
+  } else if (fromCompanyId) {
+    const { data } = await supabase.from('companies').select('name').eq('id', fromCompanyId).maybeSingle()
+    referredBy = (data as { name?: string | null } | null)?.name ?? null
+  }
+
+  const { data: existing } = await supabase.from('techs').select('id, name').eq('phone', e164).maybeSingle()
+  if (existing) {
+    const known = existing as { id: string; name: string | null }
+    await supabase
+      .from('techs')
+      .update({ name: known.name ?? name, referred_by_tech_id: fromTechId ?? null, referred_by: referredBy } as never)
+      .eq('id', known.id)
+    revalidatePath('/techs')
+    return { error: null, id: known.id, existed: true }
+  }
+
+  const { data, error } = await supabase
+    .from('techs')
+    .insert({
+      name,
+      phone: e164,
+      source: referredBy ? `Referral from ${referredBy}` : 'Referral',
+      status: 'new',
+      owner_id: user.id,
+      referred_by_tech_id: fromTechId ?? null,
+      referred_by: referredBy,
+      notes: [note, referredBy ? `Referred by ${referredBy}.` : 'Referred during a call.'].filter(Boolean).join(' '),
+    } as never)
+    .select('id')
+    .single()
+  if (error) return { error: error.message }
+
+  // The referrer's own record should show that they gave us someone.
+  if (fromTechId) {
+    await supabase.from('tech_touchpoints').insert({
+      tech_id: fromTechId,
+      user_id: user.id,
+      channel: 'call',
+      summary: `Referred ${name} (${e164})`,
+    } as never)
+  }
+
+  revalidatePath('/techs')
+  return { error: null, id: (data as { id: string }).id, existed: false }
+}

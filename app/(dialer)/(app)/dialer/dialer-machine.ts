@@ -103,6 +103,7 @@ export type DialerAction =
   | { type: 'RETURN_TO_READY'; notice: string | null }
   | { type: 'ERROR'; message: string | null }
   | { type: 'SESSION_READY_NOTICE'; notice: string }
+  | { type: 'WRAP_KIND'; kind: 'company' | 'tech'; techId?: string; name?: string }
   | { type: 'DISMISS_NOTICE'; id?: number }
 
 export const initialDialerState: DialerState = {
@@ -504,6 +505,15 @@ export function dialerReducer(state: DialerState, action: DialerAction): DialerS
         settledAt: null,
         notice: action.notice ? makeNotice(state, 'info', action.notice) : state.notice,
       }
+
+    case 'WRAP_KIND': {
+      if (!state.wrap) return state
+      const meta = { ...state.meta }
+      const id = state.wrap.callId
+      const current = meta[id]
+      if (current) meta[id] = { ...current, kind: action.kind, techId: action.techId, companyName: action.name || current.companyName }
+      return { ...state, meta, wrap: { ...state.wrap, kind: action.kind, techId: action.techId, companyName: action.name || state.wrap.companyName } }
+    }
 
     case 'ERROR':
       return { ...state, error: action.message }

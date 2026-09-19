@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import type { EpaCert, RoleType } from '@/types/db'
 import type { Line } from './use-dialer'
 import { formatClock } from './dialer-machine'
+import { ReferralCapture } from './referral-capture'
 
 const TONE_RING = {
   good: 'border-good text-good bg-good-bg',
@@ -42,12 +43,15 @@ export function TechExitInterview({
   endedBy,
   talkSeconds,
   saveLabel = 'Save and dial next',
+  onSwitchKind,
   onDone,
 }: {
   call: Line
   endedBy?: 'you' | 'prospect'
   talkSeconds?: number | null
   saveLabel?: string
+  /** Turn this into a call to a company and show that form instead. */
+  onSwitchKind?: () => void
   onDone: () => void
 }) {
   const [outcome, setOutcome] = useState<string | null>(null)
@@ -141,6 +145,11 @@ export function TechExitInterview({
             <span className="font-normal"> · technician</span>
           </p>
           <h2 className="text-base font-semibold">{call.companyName}</h2>
+          {onSwitchKind && (
+            <button type="button" onClick={onSwitchKind} className="mt-0.5 cursor-pointer text-xs text-muted underline hover:text-foreground">
+              This was a company, not a technician
+            </button>
+          )}
         </div>
 
         <div className="space-y-4 px-5 py-4">
@@ -219,6 +228,8 @@ export function TechExitInterview({
               </div>
             </fieldset>
           )}
+
+          <ReferralCapture fromTechId={call.techId ?? null} />
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Notes</span>
