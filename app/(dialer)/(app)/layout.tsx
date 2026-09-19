@@ -46,6 +46,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
           <NavLink href="/techs" icon="techs" badge={techsDue ?? 0}>Techs</NavLink>
           <NavLink href="/tech-interviews" icon="techInterviews">Tech interviews</NavLink>
           <NavLink href="/stats" icon="stats">Stats</NavLink>
+          <NavLink href="/streaks" icon="streaks">Streaks</NavLink>
           <NavLink href="/health" icon="health">Phone health</NavLink>
         </nav>
 
