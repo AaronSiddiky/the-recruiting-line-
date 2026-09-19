@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ExitInterview } from './exit-interview'
+import { TechExitInterview } from './tech-exit-interview'
 import { DialPad } from './dial-pad'
 import { VoicemailSettings } from './voicemail-settings'
 import { MicSettings } from './mic-settings'
@@ -235,14 +236,24 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
       </div>
 
       {d.phase === 'wrapup' && d.wrap && (
-        <ExitInterview
-          call={d.wrap}
-          endedBy={d.wrap.endedBy}
-          talkSeconds={d.wrap.talkSeconds}
-          saveLabel={d.mode === 'manual' ? 'Save' : 'Save and dial next'}
-          defaultOutcome={d.wasVoicemailLeft(d.wrap.callId) ? 'no_answer' : null}
-          onDone={d.finishWrapup}
-        />
+        d.wrap.kind === 'tech' ? (
+          <TechExitInterview
+            call={d.wrap}
+            endedBy={d.wrap.endedBy}
+            talkSeconds={d.wrap.talkSeconds}
+            saveLabel={d.mode === 'manual' ? 'Save' : 'Save and dial next'}
+            onDone={d.finishWrapup}
+          />
+        ) : (
+          <ExitInterview
+            call={d.wrap}
+            endedBy={d.wrap.endedBy}
+            talkSeconds={d.wrap.talkSeconds}
+            saveLabel={d.mode === 'manual' ? 'Save' : 'Save and dial next'}
+            defaultOutcome={d.wasVoicemailLeft(d.wrap.callId) ? 'no_answer' : null}
+            onDone={d.finishWrapup}
+          />
+        )
       )}
     </div>
   )

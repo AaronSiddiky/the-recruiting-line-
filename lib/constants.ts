@@ -151,3 +151,103 @@ export const STATS_SINCE = '2026-09-13T23:36:08Z'
  * totals reps had already earned when the counting rule changed.
  */
 export const STATS_OUTCOME_SINCE = '2026-09-15T18:06:55Z'
+
+/**
+ * What a call to a technician can end in. Distinct from CALL_OUTCOMES, which
+ * is about a company's open seat. Each maps onto a `call_outcome` for the call
+ * row, a pipeline stage for the tech, and when to ring them next.
+ */
+export const TECH_OUTCOMES: {
+  value: string
+  label: string
+  hint: string
+  key: string
+  tone: 'good' | 'bad' | 'neutral' | 'warn'
+  /** Stored on the call row. */
+  callOutcome: CallOutcome
+  /** Moves the tech here, unless they are already further along. */
+  stage: 'screened' | 'interviewing' | 'contacting' | 'rejected' | 'placed'
+  /** Days until the next touch; null means "ask for a date". */
+  followUpDays: number | null
+}[] = [
+  {
+    value: 'interested',
+    label: 'Interested in work',
+    hint: 'Wants to hear about openings — moves to Screened',
+    key: '1',
+    tone: 'good',
+    callOutcome: 'meeting_booked',
+    stage: 'screened',
+    followUpDays: 7,
+  },
+  {
+    value: 'book_interview',
+    label: 'Booked a tech interview',
+    hint: 'Set the time below — moves to Tech interviews',
+    key: '2',
+    tone: 'good',
+    callOutcome: 'meeting_booked',
+    stage: 'interviewing',
+    followUpDays: 7,
+  },
+  {
+    value: 'call_back',
+    label: 'Call back',
+    hint: 'Busy now — pick a day',
+    key: '3',
+    tone: 'warn',
+    callOutcome: 'call_back',
+    stage: 'contacting',
+    followUpDays: null,
+  },
+  {
+    value: 'no_answer',
+    label: 'No answer',
+    hint: 'Voicemail or nobody there — try again tomorrow',
+    key: '4',
+    tone: 'neutral',
+    callOutcome: 'no_answer',
+    stage: 'contacting',
+    followUpDays: 1,
+  },
+  {
+    value: 'has_job',
+    label: 'Happy where they are',
+    hint: 'Working and not looking — back in a month',
+    key: '5',
+    tone: 'warn',
+    callOutcome: 'not_hiring',
+    stage: 'contacting',
+    followUpDays: 30,
+  },
+  {
+    value: 'not_interested',
+    label: 'Not interested',
+    hint: 'Done with us — out of the queue',
+    key: '6',
+    tone: 'bad',
+    callOutcome: 'not_interested',
+    stage: 'rejected',
+    followUpDays: null,
+  },
+  {
+    value: 'wrong_number',
+    label: 'Wrong number',
+    hint: 'Bad data — out of the queue',
+    key: '7',
+    tone: 'neutral',
+    callOutcome: 'wrong_number',
+    stage: 'rejected',
+    followUpDays: null,
+  },
+  {
+    value: 'placed',
+    label: 'Placed',
+    hint: 'Starting with a client — counts on the stats page',
+    key: '8',
+    tone: 'good',
+    callOutcome: 'customer',
+    stage: 'placed',
+    followUpDays: null,
+  },
+]

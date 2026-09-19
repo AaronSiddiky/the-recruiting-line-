@@ -7,6 +7,19 @@ const bodySchema = z.object({
   notes: z.string().max(10_000).optional(),
   nextFollowUp: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   email: z.string().trim().email().max(200).optional(),
+  /** Only meaningful on a call to a technician; ignored otherwise. */
+  tech: z
+    .object({
+      years_hvac: z.number().min(0).max(60).optional(),
+      role_pref: z.enum(['install', 'service', 'both']).optional(),
+      epa_cert: z.enum(['none', 'type1', 'type2', 'type3', 'universal']).optional(),
+      own_tools: z.boolean().optional(),
+      commission_ok: z.boolean().optional(),
+      pay_min: z.number().int().min(0).max(500).optional(),
+      interview_at: z.string().datetime({ offset: true }).optional(),
+      stage: z.enum(['contacting', 'screened', 'interviewing', 'presented', 'placed', 'rejected']).optional(),
+    })
+    .optional(),
 })
 
 /**
@@ -33,7 +46,7 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid exit interview.' }, { status: 400 })
   }
 
-  const { outcome, notes, nextFollowUp, email } = parsed.data
+  const { outcome, notes, nextFollowUp, email, tech: techInput } = parsed.data
 
   // RLS restricts this to the agent who made the call.
   const { data: call, error } = await supabase
@@ -88,14 +101,26 @@ export async function POST(
 
     const { data: tech } = await supabase.from('techs').select('status').eq('id', call.tech_id).single()
     const current = (tech as { status?: string } | null)?.status ?? 'new'
-    const early = current === 'new' || current === 'reviewing' || current === 'contacting'
-    let status: string | null = null
-    if (outcome === 'customer') status = 'placed'
-    else if (outcome === 'not_interested' || outcome === 'wrong_number') status = 'rejected'
-    else if (outcome === 'meeting_booked' && early) status = 'screened'
-    else if (current === 'new' || current === 'reviewing') status = 'contacting'
-    const techPatch: Record<string, string> = {}
-    if (status) techPatch.status = status
+    const order = ['new', 'reviewing', 'contacting', 'screened', 'interviewing', 'presented', 'placed']
+    const techPatch: Record<string, unknown> = {}
+
+    if (techInput) {
+      const { stage, ...screening } = techInput
+      Object.assign(techPatch, screening)
+      // Never walk a tech backwards: a rep who books an interview with someone
+      // already presented to a client should not undo that.
+      if (stage) {
+        const terminal = stage === 'rejected' || stage === 'placed'
+        if (terminal || order.indexOf(stage) > order.indexOf(current)) techPatch.status = stage
+      }
+    } else {
+      // A company-shaped submission on a tech call (older client build).
+      const early = current === 'new' || current === 'reviewing' || current === 'contacting'
+      if (outcome === 'customer') techPatch.status = 'placed'
+      else if (outcome === 'not_interested' || outcome === 'wrong_number') techPatch.status = 'rejected'
+      else if (outcome === 'meeting_booked' && early) techPatch.status = 'screened'
+      else if (current === 'new' || current === 'reviewing') techPatch.status = 'contacting'
+    }
     if (email) techPatch.email = email
     if (Object.keys(techPatch).length) await supabase.from('techs').update(techPatch as never).eq('id', call.tech_id)
   } else if (call.company_id && Object.keys(companyPatch).length > 0) {
