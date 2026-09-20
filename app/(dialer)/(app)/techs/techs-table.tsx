@@ -7,7 +7,7 @@ import { ClipboardCheck, Plus, Trash2, Upload, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { createTech, deleteTech, importTechs, updateTech } from '@/lib/actions/techs'
-import { formatPhone } from '@/lib/utils'
+import { cn, formatPhone } from '@/lib/utils'
 import type { Profile, Tech } from '@/types/db'
 
 import { STAGES as STATUSES } from './[id]/tech-detail'
