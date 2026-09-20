@@ -23,6 +23,7 @@ import { VoicemailSettings } from './voicemail-settings'
 import { MicSettings } from './mic-settings'
 import { SpotifyDeck } from './spotify-deck'
 import { requestSpotifyRefresh, useSpotifyMini } from './spotify-bus'
+import { CopyScreenLink } from '../techs/[id]/copy-screen-link'
 import { Pause, Volume2 } from 'lucide-react'
 import { useDialer, type AgentAudio, type AudioLevels, type LineWait } from './use-dialer'
 import {
@@ -825,6 +826,8 @@ function LiveCallPanel({
               </button>
             </div>
 
+            {line.kind === 'tech' && <LiveScreenLink callId={line.callId} name={line.companyName} />}
+
             <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-2">
               <span>{lines.length > 1 ? otherLinesText(others) : 'Hanging up opens the exit interview.'}</span>
               <Link
@@ -979,5 +982,35 @@ function MusicButton() {
       {music.isPlaying ? <Pause className="size-3.5 shrink-0" aria-hidden /> : <Play className="size-3.5 shrink-0" aria-hidden />}
       <span className="truncate">{music.track ? music.track.name : 'Spotify'}</span>
     </button>
+  )
+}
+
+/**
+ * The tech's own screening link, while the call is still live. Asked for by
+ * name: "can you send me those questions?" happens mid-sentence, and copying
+ * it after hanging up means asking them to wait.
+ */
+function LiveScreenLink({ callId, name }: { callId: string; name: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let stale = false
+    fetch(`/api/calls/${callId}/context`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { screenUrl?: string | null } | null) => {
+        if (!stale && d?.screenUrl) setUrl(d.screenUrl)
+      })
+      .catch(() => undefined)
+    return () => {
+      stale = true
+    }
+  }, [callId])
+
+  if (!url) return null
+  return (
+    <div className="mt-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+      <p className="mb-1.5 text-xs font-medium text-muted">Still looking? Send them the questions while you have them.</p>
+      <CopyScreenLink url={url} firstName={name.split(' ')[0]} />
+    </div>
   )
 }
