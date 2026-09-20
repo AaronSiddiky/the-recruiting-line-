@@ -45,7 +45,22 @@ const localInput = (iso: string | null) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function TechDetail({ tech, matches, touchpoints, presentations }: { tech: Tech; matches: Match[]; touchpoints: Touch[]; presentations: TechPresentation[] }) {
+export function TechDetail({
+  tech,
+  matches,
+  touchpoints,
+  presentations,
+  calls,
+  callCount,
+}: {
+  tech: Tech
+  matches: Match[]
+  touchpoints: Touch[]
+  presentations: TechPresentation[]
+  /** Their call history, with recordings and AI summaries. */
+  calls?: React.ReactNode
+  callCount?: number
+}) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -162,6 +177,17 @@ export function TechDetail({ tech, matches, touchpoints, presentations }: { tech
         </ul>
       )}
       <p className="mt-1.5 text-xs text-muted">Score out of 100 from distance, install vs service, tools, commission, experience, EPA and pay. Blank screening answers count as half. Fill the screening card to sharpen it.</p>
+
+      {/* Calls */}
+      {calls && (
+        <>
+          <h2 className="mt-7 mb-2 text-sm font-semibold">
+            Calls <span className="tnum ml-2 font-normal text-muted-2">{callCount ?? 0}</span>
+            <span className="ml-2 text-xs font-normal text-muted">expand one to play the recording and read the AI summary</span>
+          </h2>
+          {calls}
+        </>
+      )}
 
       {/* Touch points */}
       <h2 className="mt-7 mb-2 text-sm font-semibold">Touch points <span className="tnum ml-2 font-normal text-muted-2">{touchpoints.length}</span></h2>
