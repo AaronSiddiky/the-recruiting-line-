@@ -9,6 +9,7 @@ import type { EpaCert, RoleType } from '@/types/db'
 import type { Line } from './use-dialer'
 import { formatClock } from './dialer-machine'
 import { ReferralCapture } from './referral-capture'
+import { PreviousCalls, type PriorCall } from './previous-calls'
 
 const TONE_RING = {
   good: 'border-good text-good bg-good-bg',
@@ -67,6 +68,34 @@ export function TechExitInterview({
   const [pay, setPay] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [prior, setPrior] = useState<PriorCall[]>([])
+  const [known, setKnown] = useState<{ name?: string | null; status?: string } | null>(null)
+
+  // What we already know: earlier calls, and the screening card as it stands.
+  // Pre-filling it means a second call corrects what is there instead of
+  // asking the same six questions again.
+  useEffect(() => {
+    let stale = false
+    fetch(`/api/calls/${call.callId}/context`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { previous?: PriorCall[]; tech?: Record<string, unknown> | null } | null) => {
+        if (stale || !d) return
+        setPrior(d.previous ?? [])
+        const t = d.tech
+        if (!t) return
+        setKnown({ name: t.name as string | null, status: t.status as string })
+        if (t.years_hvac != null) setYears(String(t.years_hvac))
+        if (t.role_pref) setRolePref(t.role_pref as RoleType)
+        if (t.epa_cert) setEpa(t.epa_cert as EpaCert)
+        if (t.own_tools != null) setTools(t.own_tools ? 'yes' : 'no')
+        if (t.commission_ok != null) setCommission(t.commission_ok ? 'yes' : 'no')
+        if (t.pay_min != null) setPay(String(t.pay_min))
+      })
+      .catch(() => undefined)
+    return () => {
+      stale = true
+    }
+  }, [call.callId])
 
   const chosen = TECH_OUTCOMES.find((o) => o.value === outcome) ?? null
   const screening = outcome === 'interested' || outcome === 'book_interview' || outcome === 'call_back'
@@ -142,7 +171,7 @@ export function TechExitInterview({
           <p className={cn('text-xs font-semibold', endedBy === 'prospect' ? 'text-bad' : 'text-muted')}>
             {endedBy === 'prospect' ? 'They hung up' : endedBy === 'you' ? 'You hung up' : 'Call ended'}
             {talkSeconds != null && <span className="tnum font-normal"> · talked {formatClock(talkSeconds)}</span>}
-            <span className="font-normal"> · technician</span>
+            <span className="font-normal"> · technician{known?.status ? ` · ${known.status}` : ''}</span>
           </p>
           <h2 className="text-base font-semibold">{call.companyName}</h2>
           {onSwitchKind && (
@@ -153,6 +182,12 @@ export function TechExitInterview({
         </div>
 
         <div className="space-y-4 px-5 py-4">
+          <PreviousCalls
+            calls={prior}
+            labelFor={(o) => TECH_OUTCOMES.find((x) => x.callOutcome === o)?.label ?? (o ? o.replace(/_/g, ' ') : 'No outcome logged')}
+            outcomes={TECH_OUTCOMES.map((o) => [o.callOutcome, o.label] as [string, string])}
+          />
+
           <fieldset>
             <legend className="mb-2 text-xs font-medium text-muted">How did it go?</legend>
             <div className="grid grid-cols-2 gap-2">
@@ -197,7 +232,9 @@ export function TechExitInterview({
 
           {screening && (
             <fieldset className="rounded-md border border-border-subtle p-3">
-              <legend className="px-1 text-xs font-medium text-muted">Screening — fill in what they told you</legend>
+              <legend className="px-1 text-xs font-medium text-muted">
+              Screening — {prior.length > 0 ? 'what we had, correct anything that changed' : 'fill in what they told you'}
+            </legend>
               <div className="grid grid-cols-3 gap-2">
                 <label className="flex flex-col gap-1 text-xs text-muted">Years HVAC
                   <input type="number" min={0} step={0.5} value={years} onChange={(e) => setYears(e.target.value)} className={`${small} tnum`} />

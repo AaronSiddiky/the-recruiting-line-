@@ -9,6 +9,7 @@ import type { CallOutcome } from '@/types/db'
 import type { Line } from './use-dialer'
 import { formatClock } from './dialer-machine'
 import { ReferralCapture } from './referral-capture'
+import { PreviousCalls, type PriorCall } from './previous-calls'
 
 const TONE_RING = {
   good: 'border-good text-good bg-good-bg',
@@ -66,6 +67,7 @@ export function ExitInterview({
   const [notes, setNotes] = useState('')
   const [email, setEmail] = useState('')
   const [followUp, setFollowUp] = useState(defaultFollowUp)
+  const [prior, setPrior] = useState<PriorCall[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -133,6 +135,20 @@ export function ExitInterview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outcome, notes, followUp, email, saving])
 
+  // Earlier calls to this company, so a second conversation starts informed.
+  useEffect(() => {
+    let stale = false
+    fetch(`/api/calls/${call.callId}/context`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { previous?: PriorCall[] } | null) => {
+        if (!stale && d) setPrior(d.previous ?? [])
+      })
+      .catch(() => undefined)
+    return () => {
+      stale = true
+    }
+  }, [call.callId])
+
   return (
     <div
       role="dialog"
@@ -162,6 +178,12 @@ export function ExitInterview({
         </div>
 
         <div className="space-y-4 px-5 py-4">
+          <PreviousCalls
+            calls={prior}
+            labelFor={(o) => CALL_OUTCOMES.find((x) => x.value === o)?.label ?? (o ? o.replace(/_/g, ' ') : 'No outcome logged')}
+            outcomes={CALL_OUTCOMES.map((o) => [o.value, o.label] as [string, string])}
+          />
+
           <fieldset>
             <legend className="mb-2 text-xs font-medium text-muted">
               What happened?
