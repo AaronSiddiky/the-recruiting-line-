@@ -183,6 +183,12 @@ export type Tech = {
   interview_at: string | null
   interview_notes: string | null
   last_touch_at: string | null
+  /** When they returned the screening form. */
+  screening_at: string | null
+  /** Their own answer to "are you still looking?" */
+  looking: boolean | null
+  /** What they do now, in their words. */
+  current_job: string | null
   /** The tech who named them, when the referral came from another tech. */
   referred_by_tech_id: string | null
   /** Who named them, when it was a company or someone we don't track. */

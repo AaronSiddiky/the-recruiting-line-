@@ -31,6 +31,8 @@ const patchSchema = z.object({
   interview_at: z.string().datetime({ offset: true }).nullable().optional(),
   interview_notes: z.string().trim().max(10_000).nullable().optional(),
   next_follow_up: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  current_job: text(200),
+  looking: z.boolean().nullable().optional(),
   applied_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   placed_company_id: z.string().uuid().nullable().optional(),
   notes: z.string().trim().max(10_000).optional(),

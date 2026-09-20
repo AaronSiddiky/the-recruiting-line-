@@ -10,6 +10,7 @@ import type { Line } from './use-dialer'
 import { formatClock } from './dialer-machine'
 import { ReferralCapture } from './referral-capture'
 import { PreviousCalls, type PriorCall } from './previous-calls'
+import { CopyScreenLink } from '../techs/[id]/copy-screen-link'
 
 const TONE_RING = {
   good: 'border-good text-good bg-good-bg',
@@ -70,6 +71,7 @@ export function TechExitInterview({
   const [error, setError] = useState<string | null>(null)
   const [prior, setPrior] = useState<PriorCall[]>([])
   const [known, setKnown] = useState<{ name?: string | null; status?: string } | null>(null)
+  const [screenLink, setScreenLink] = useState<string | null>(null)
 
   // What we already know: earlier calls, and the screening card as it stands.
   // Pre-filling it means a second call corrects what is there instead of
@@ -78,9 +80,10 @@ export function TechExitInterview({
     let stale = false
     fetch(`/api/calls/${call.callId}/context`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { previous?: PriorCall[]; tech?: Record<string, unknown> | null } | null) => {
+      .then((d: { previous?: PriorCall[]; tech?: Record<string, unknown> | null; screenUrl?: string } | null) => {
         if (stale || !d) return
         setPrior(d.previous ?? [])
+        if (d.screenUrl) setScreenLink(d.screenUrl)
         const t = d.tech
         if (!t) return
         setKnown({ name: t.name as string | null, status: t.status as string })
@@ -264,6 +267,15 @@ export function TechExitInterview({
                 </label>
               </div>
             </fieldset>
+          )}
+
+          {screenLink && (
+            <div className="rounded-md border border-border-subtle bg-surface px-3 py-2">
+              <p className="text-xs font-medium text-muted">Still looking? Send them the questions.</p>
+              <div className="mt-1.5">
+                <CopyScreenLink url={screenLink} firstName={(known?.name ?? call.companyName ?? '').split(' ')[0]} />
+              </div>
+            </div>
           )}
 
           <ReferralCapture fromTechId={call.techId ?? null} />

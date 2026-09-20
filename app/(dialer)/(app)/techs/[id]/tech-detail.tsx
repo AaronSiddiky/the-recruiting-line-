@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { addTechTouch, deleteTechTouch, presentTech, setPresentationStatus, updateTech } from '@/lib/actions/techs'
 import { formatPhone } from '@/lib/utils'
+import { CopyScreenLink } from './copy-screen-link'
 import type { Match } from '@/lib/techs/match'
 import type { PresentationStatus, Tech, TechPresentation, TechStatus, TechTouchpoint, TouchChannel } from '@/types/db'
 
@@ -52,11 +53,14 @@ export function TechDetail({
   presentations,
   calls,
   callCount,
+  screenUrl,
 }: {
   tech: Tech
   matches: Match[]
   touchpoints: Touch[]
   presentations: TechPresentation[]
+  /** Signed link to the screening form, for texting them. */
+  screenUrl?: string
   /** Their call history, with recordings and AI summaries. */
   calls?: React.ReactNode
   callCount?: number
@@ -111,7 +115,18 @@ export function TechDetail({
       {error && <p className="mt-2 text-xs text-bad">Could not save: {error}</p>}
 
       {/* Screening card */}
-      <h2 className="mt-7 mb-2 text-sm font-semibold">Screening</h2>
+      <h2 className="mt-7 mb-2 flex flex-wrap items-center gap-3 text-sm font-semibold">
+        Screening
+        {tech.screening_at ? (
+          <span className="text-xs font-normal text-good">
+            Form returned {new Date(tech.screening_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {tech.looking === false ? ' · said they are not looking right now' : ''}
+          </span>
+        ) : (
+          <span className="text-xs font-normal text-muted">Form not returned yet</span>
+        )}
+      </h2>
+      {screenUrl && <div className="mb-3"><CopyScreenLink url={screenUrl} firstName={(tech.name ?? '').split(' ')[0]} /></div>}
       <section className="grid gap-3 rounded-lg border border-border-subtle p-4 sm:grid-cols-4">
         <Num label="Years in HVAC" value={tech.years_hvac} step={0.5} onSave={(v) => save({ years_hvac: v })} cls={field} />
         <Sel label="Install or service" value={tech.role_pref} options={[['install', 'Install'], ['service', 'Service'], ['both', 'Both']]} onSave={(v) => save({ role_pref: v })} cls={field} />
@@ -124,7 +139,10 @@ export function TechDetail({
         <label className="flex flex-col gap-1 text-xs text-muted">Can start
           <input type="date" defaultValue={tech.available_from ?? ''} onChange={(e) => save({ available_from: e.target.value || null })} className={`${field} tnum`} />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-muted sm:col-span-3">Experience
+        <label className="flex flex-col gap-1 text-xs text-muted">Doing now
+          <input defaultValue={tech.current_job ?? ''} placeholder="HVAC tech at Acme Air" onBlur={(e) => e.target.value.trim() !== (tech.current_job ?? '') && save({ current_job: e.target.value.trim() || null })} className={field} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted sm:col-span-2">Experience
           <textarea defaultValue={tech.experience ?? ''} rows={2} onBlur={(e) => e.target.value.trim() !== (tech.experience ?? '') && save({ experience: e.target.value.trim() || null })} className="w-full rounded-md border border-border-strong bg-background p-2 text-sm" />
         </label>
       </section>

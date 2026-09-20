@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { rankMatches, type MatchClient } from '@/lib/techs/match'
+import { screenUrl } from '@/lib/techs/screen-link'
 import { TechDetail } from './tech-detail'
 import { CallHistory, type CallRow } from '../../companies/[id]/call-history'
 import type { Tech, TechPresentation, TechTouchpoint } from '@/types/db'
@@ -44,6 +45,7 @@ export default async function TechPage(props: PageProps<'/techs/[id]'>) {
         matches={matches}
         touchpoints={(touches ?? []) as unknown as (TechTouchpoint & { author: { full_name: string } | null })[]}
         presentations={(presentations ?? []) as TechPresentation[]}
+        screenUrl={screenUrl(t.id)}
         calls={<CallHistory calls={(calls ?? []) as unknown as CallRow[]} />}
         callCount={(calls ?? []).length}
       />

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { screenUrl } from '@/lib/techs/screen-link'
 
 type PriorCall = {
   id: string
@@ -44,5 +45,8 @@ export async function GET(_request: NextRequest, ctx: RouteContext<'/api/calls/[
   }
 
   const rows = ((previous ?? []) as unknown as PriorCall[]).filter((p) => p.outcome || p.notes)
-  return NextResponse.json({ previous: rows, tech, isTech: !!call.tech_id }, { headers: { 'Cache-Control': 'no-store' } })
+  return NextResponse.json(
+    { previous: rows, tech, isTech: !!call.tech_id, screenUrl: call.tech_id ? screenUrl(call.tech_id) : null },
+    { headers: { 'Cache-Control': 'no-store' } },
+  )
 }
