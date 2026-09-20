@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Trash2, Upload, X } from 'lucide-react'
+import { ClipboardCheck, Plus, Trash2, Upload, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { createTech, deleteTech, importTechs, updateTech } from '@/lib/actions/techs'
@@ -61,6 +61,8 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
         <select value={status} onChange={(e) => setParam('status', e.target.value)} aria-label="Status" className="h-8 rounded-md border border-border-strong bg-background px-2 text-sm">
           <option value="">Any stage</option>
           <option value="due">Touch due</option>
+          <option value="form">Form returned</option>
+          <option value="noform">Form not returned</option>
           {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <span className="tnum text-xs text-muted">{rows.length} shown</span>
@@ -72,6 +74,9 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
 
       {!q && !status && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-border-subtle px-4 py-1.5 text-xs text-muted">
+          <button type="button" onClick={() => setParam('status', 'form')} className="cursor-pointer font-medium text-good hover:underline">
+            Form returned <span className="tnum">{rows.filter((r) => r.screening_at).length}</span>
+          </button>
           <button type="button" onClick={() => setParam('status', 'due')} className="cursor-pointer font-medium text-bad hover:underline">
             Touch due <span className="tnum">{rows.filter((r) => r.next_follow_up && r.next_follow_up <= new Date().toISOString().slice(0, 10) && ['contacting', 'screened', 'interviewing', 'presented'].includes(r.status)).length}</span>
           </button>
@@ -106,7 +111,21 @@ export function TechsTable({ rows, profiles, clients, q, status }: { rows: Tech[
               {rows.map((t) => (
                 <tr key={t.id} className="group align-top hover:bg-surface">
                   <td className="border-b border-border-subtle px-2 py-1.5">
-                    <Link href={`/techs/${t.id}`} className="block px-1 font-medium hover:text-accent hover:underline">{t.name ?? 'Unnamed'}</Link>
+                    <span className="flex items-center gap-1.5 px-1">
+                      <Link href={`/techs/${t.id}`} className="font-medium hover:text-accent hover:underline">{t.name ?? 'Unnamed'}</Link>
+                      {t.screening_at && (
+                        <span
+                          title={`Filled in the form ${new Date(t.screening_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${t.looking === false ? ' — said they are not looking' : ''}`}
+                          className={cn(
+                            'inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold',
+                            t.looking === false ? 'bg-warn-bg text-warn' : 'bg-good-bg text-good',
+                          )}
+                        >
+                          <ClipboardCheck className="size-2.5" aria-hidden />
+                          {t.looking === false ? 'not looking' : 'form'}
+                        </span>
+                      )}
+                    </span>
                     <input defaultValue={t.email ?? ''} placeholder="email" onBlur={(e) => e.target.value.trim() !== (t.email ?? '') && save(t.id, { email: e.target.value.trim() || null })} className={`${cell} text-xs text-muted`} />
                   </td>
                   <td className="border-b border-border-subtle px-2 py-1.5 whitespace-nowrap">

@@ -11,7 +11,11 @@ export default async function TechsPage(props: PageProps<'/techs'>) {
   const supabase = await createClient()
   let query = supabase.from('techs').select('*').order('applied_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
   const STATUSES = new Set<string>(['new', 'reviewing', 'contacting', 'screened', 'interviewing', 'presented', 'placed', 'rejected'])
-  if (status === 'due') {
+  if (status === 'form') {
+    query = query.not('screening_at', 'is', null)
+  } else if (status === 'noform') {
+    query = query.is('screening_at', null).in('status', ['new', 'reviewing', 'contacting', 'screened', 'interviewing', 'presented'])
+  } else if (status === 'due') {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
     query = query.in('status', ['contacting', 'screened', 'interviewing', 'presented']).lte('next_follow_up', today)
   } else if (STATUSES.has(status)) query = query.eq('status', status as TechStatus)

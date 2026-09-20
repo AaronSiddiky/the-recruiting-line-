@@ -43,6 +43,7 @@ export default async function TechInterviewsPage() {
                     <td className="tnum border-b border-border-subtle px-3 py-2 whitespace-nowrap">{t.phone ? <a href={`tel:${t.phone}`} className="hover:text-accent">{formatPhone(t.phone)}</a> : '—'}</td>
                     <td className="max-w-xs border-b border-border-subtle px-3 py-2 text-xs">{[t.title, t.employer].filter(Boolean).join(' at ')}</td>
                     <td className="border-b border-border-subtle px-3 py-2 text-xs whitespace-nowrap">
+                      {t.screening_at && <span className="mr-1.5 rounded bg-good-bg px-1 text-[10px] font-semibold text-good">form</span>}
                       {[t.years_hvac != null && `${t.years_hvac} yrs`, t.role_pref, t.epa_cert && t.epa_cert !== 'none' && `EPA ${t.epa_cert}`, t.own_tools && 'tools', t.pay_min && `$${t.pay_min}+/hr`].filter(Boolean).join(' · ') || <span className="text-muted-2">not screened</span>}
                     </td>
                     <td className="border-b border-border-subtle px-3 py-2 whitespace-nowrap">{best ? <span><span className={`tnum mr-1.5 font-semibold ${best.blocker ? 'text-bad' : best.score >= 70 ? 'text-good' : 'text-warn'}`}>{best.score}</span>{best.client.company?.name}</span> : '—'}</td>
