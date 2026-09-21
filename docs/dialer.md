@@ -73,6 +73,11 @@ Because there is no headroom, a leg that outlives its call costs someone a
 turn. If "waiting for a free line" starts showing up when nobody is on the
 phone, look for `dialing`/`ringing` rows that never closed.
 
+4 is enforced as a floor in `lib/constants.ts`, not merely a default: a stale
+`TWILIO_CONCURRENT_CALLS=3` in a deployment's environment would quietly restore
+the turn-taking, and the symptom looks like a dialer bug rather than a config
+value. A larger value from the environment still takes effect.
+
 More reps, or any slack, needs a bigger cap: submit a Primary Customer Profile
 in Trust Hub (Twilio lifts limited concurrency once it is approved) and raise
 `TWILIO_CONCURRENT_CALLS`. Alternatively `lib/twilio/accounts.ts` reads a

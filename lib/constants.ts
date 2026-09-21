@@ -90,10 +90,19 @@ export const STATUS_LABELS: Record<CallStatus, string> = {
  * so one cannot take the other's, which is what lets both dial at once.
  *
  * This used to be 3, which was wrong -- it left one prospect leg between two
- * reps and made them take turns. Raise it once a Trust Hub Primary Customer
- * Profile is approved; Twilio lifts limited concurrency then.
+ * reps and made them take turns.
+ *
+ * 4 is a floor, not just a default: a stale TWILIO_CONCURRENT_CALLS=3 left in
+ * a deployment's environment would silently bring the turn-taking back, and
+ * the symptom ("waiting for a free line") looks like a bug in the dialer
+ * rather than a config value nobody remembers setting. A larger value from the
+ * environment still wins -- raise it once a Trust Hub Primary Customer Profile
+ * is approved and Twilio lifts limited concurrency. If Twilio ever throttles
+ * this account below 4, lower the floor here rather than in the environment,
+ * because below 4 two reps cannot both hold a call and that is worth seeing in
+ * the diff.
  */
-export const TWILIO_CONCURRENT_CALLS = Math.max(2, Number(process.env.TWILIO_CONCURRENT_CALLS) || 4)
+export const TWILIO_CONCURRENT_CALLS = Math.max(4, Number(process.env.TWILIO_CONCURRENT_CALLS) || 4)
 
 /** Ring for this long before giving up on a leg. */
 export const DIAL_TIMEOUT_SECONDS = 25
