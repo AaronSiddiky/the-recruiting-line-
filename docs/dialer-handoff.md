@@ -9,7 +9,7 @@ Nothing else is outstanding.
 
 ## Done and verified
 
-- **Code**: CRM grid, company page, parallel dialer, exit interview, AI summary
+- **Code**: CRM grid, company page, dialer, exit interview, AI summary
   pipeline. `npx tsc --noEmit`, `npx eslint .`, `npm run build` all clean.
 - **Schema**: migrations proven against a scratch Postgres. The four-way race on
   `claim_batch_winner` returns exactly one winner; the rollup trigger excludes

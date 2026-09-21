@@ -1,6 +1,6 @@
 import { verifyTwilioRequest } from '@/lib/twilio/verify'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { hangUpLosers } from '@/lib/twilio/calls'
+import { hangUpStrays } from '@/lib/twilio/calls'
 import type { Call, CallStatus } from '@/types/db'
 
 /**
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient()
   const { data: call } = await admin
     .from('calls')
-    .select('status, batch_id')
+    .select('status, session_id')
     .eq('id', callId)
     .maybeSingle()
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     if (params.CallDuration) {
       patch.duration_seconds = Number(params.CallDuration)
     }
-    // Answered but never bridged: the batch was won by someone else. Not a
+    // Answered but never bridged: the session's line was already taken. Not a
     // conversation.
     if (call.status === 'dialing' || call.status === 'ringing') {
       patch.status = 'no_answer'
@@ -64,11 +64,11 @@ export async function POST(request: Request) {
     await admin.from('calls').update(patch).eq('id', callId)
   }
 
-  // The answer webhook already drops the rest of the batch when a leg wins.
-  // This is the safety net for a winner that ended before that ran, so a
-  // second pickup can never bridge into the exit interview.
-  if (twilioStatus === 'completed' && call.batch_id && call.status === 'connected') {
-    await hangUpLosers(call.batch_id, callId)
+  // The answer webhook already drops any stray leg when a call connects. This
+  // is the safety net for a call that ended before that ran, so a late pickup
+  // can never bridge into the exit interview.
+  if (twilioStatus === 'completed' && call.session_id && call.status === 'connected') {
+    await hangUpStrays(call.session_id, callId)
   }
 
   return new Response(null, { status: 204 })

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Call as TwilioCall, Device as TwilioDevice } from '@twilio/voice-sdk'
 import { createClient } from '@/lib/supabase/client'
-import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 import { playCue, primeAudio } from './audio-cues'
 import {
   describeLine,
@@ -23,13 +22,15 @@ export type AgentLineState = 'offline' | 'connecting' | 'open' | 'reconnecting'
 export type AgentAudio = { line: AgentLineState; muted: boolean; warnings: string[] }
 export type AudioLevels = { input: number; output: number }
 
-type BatchResponse = {
+type DialResponse = {
   batchId?: string
   lines?: LineMeta[]
   skippedForHours?: number
+  /** Reserved a lead but did not dial it: outside its local calling hours. */
+  skipped?: boolean
   exhausted?: boolean
   busy?: boolean
-  /** Twilio's concurrent-call cap left no room for (all of) the requested lines. */
+  /** Twilio's concurrent-call cap left no room for this call. */
   capped?: boolean
   cap?: number
   agents?: number
@@ -41,6 +42,14 @@ export type LineWait = { cap: number; agents: number; inFlight: number }
 
 /** How often a rep waiting for a free call slot asks again. */
 const WAIT_RETRY_MS = 4000
+
+/**
+ * How many leads in a row may be skipped for their local calling hours before
+ * the dialer stops and says the queue is dry. One line at a time means one
+ * skip stalls the whole session, so it walks past them -- but a queue that is
+ * entirely out of hours must not spin reserving every row in the table.
+ */
+const MAX_SKIPS_IN_A_ROW = 25
 
 const OFFLINE_AGENT: AgentAudio = { line: 'offline', muted: false, warnings: [] }
 
@@ -72,7 +81,7 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
 }
 
 /**
- * Drives the dialer: the agent's softphone on one side, the prospects' legs on
+ * Drives the dialer: the rep's softphone on one side, one prospect's leg on
  * the other.
  *
  * The softphone reports on the agent's own audio -- connected, muted, mic
@@ -114,7 +123,9 @@ export function useDialer() {
           type: 'ERROR',
           message:
             'Twilio is rejecting calls: the account\u2019s concurrent-call limit is reached (error 10004). ' +
-            'Raise the limit in the Twilio Console, or lower LINES_PER_BATCH.',
+            'Every rep on this Twilio account holds a slot with their own line, so the cap has to be at least ' +
+            'twice the number of reps dialing at once. Raise it in the Twilio Console, or put each rep on their ' +
+            'own Twilio account.',
         })
       }
       setSync((current) => (current === 'offline' || current === 'connecting' ? 'polling' : current))
@@ -127,7 +138,7 @@ export function useDialer() {
 
   useEffect(() => {
     if (!sessionId) return
-    // Poll hard whenever lines are out and Realtime isn't confirmed. Keep a
+    // Poll hard whenever a call is out and Realtime isn't confirmed. Keep a
     // slower reconciliation poll even when it is: sockets die quietly.
     const every = !dialingOrLive ? 8000 : sync === 'live' ? 3000 : 1500
     const timer = setInterval(() => void refresh(sessionId), every)
@@ -246,38 +257,12 @@ export function useDialer() {
     if (id) void postJson('/api/session/queue', { sessionId: id, queue: q }).catch(() => undefined)
   }, [])
 
-  // --- Lines per batch (rep's preference) ------------------------------------
-
-  const LINES_KEY = 'dialer.lines'
-  const [linesWanted, setLinesWantedState] = useState(DEFAULT_LINES_PER_BATCH)
-  useEffect(() => {
-    try {
-      const saved = Number(localStorage.getItem(LINES_KEY))
-      if (saved >= 1 && saved <= 6) queueMicrotask(() => setLinesWantedState(saved))
-    } catch {
-      // Ignore.
-    }
-  }, [])
   /** Switch microphones mid-session (the SDK swaps the track live). */
   const setMicDevice = useCallback(async (deviceId: string) => {
     await deviceRef.current?.audio?.setInputDevice(deviceId).catch(() => undefined)
   }, [])
 
-  const setLinesWanted = useCallback((n: number) => {
-    const v = Math.min(6, Math.max(1, Math.round(n)))
-    setLinesWantedState(v)
-    try {
-      localStorage.setItem(LINES_KEY, String(v))
-    } catch {
-      // Ignore.
-    }
-  }, [])
-  const linesWantedRef = useRef(linesWanted)
-  useEffect(() => {
-    linesWantedRef.current = linesWanted
-  }, [linesWanted])
-
-  // --- The agent's own line ---------------------------------------------------
+  // --- The rep's own line -----------------------------------------------------
 
   const connectSoftphone = useCallback(async (id: string) => {
     const tokenResponse = await fetch('/api/twilio/token')
@@ -339,39 +324,66 @@ export function useDialer() {
 
   // --- Dialing ----------------------------------------------------------------
 
-  const linesPerBatchRef = useRef(DEFAULT_LINES_PER_BATCH)
   const queueDryRef = useRef(false)
-  const toppingUpRef = useRef(false)
 
-  const startBatch = useCallback(
-    async (id: string) => {
-      dispatch({ type: 'DIAL_REQUESTED', mode: 'batch' })
+  /**
+   * Dial the next lead. `quiet` is for the poll that runs while waiting on a
+   * free call slot: it holds off on DIAL_REQUESTED until a line is actually
+   * out, so a screen that is still capped doesn't flicker into "Placing call"
+   * every few seconds.
+   */
+  const dialNext = useCallback(
+    async (id: string, options?: { quiet?: boolean }) => {
+      const quiet = options?.quiet ?? false
+      if (!quiet) dispatch({ type: 'DIAL_REQUESTED', mode: 'queue' })
+      let skipped = 0
       try {
-        const result = await postJson<BatchResponse>('/api/session/batch', { sessionId: id })
-        if (result.capped && !result.lines?.length) {
-          // No free slot: every call the account may hold is in use, usually by
-          // another rep. Park in `ready` and let the wait effect retry quietly;
-          // a warning here would auto-dismiss and leave a screen that looks idle.
-          setLineWait({ cap: result.cap ?? 3, agents: result.agents ?? 0, inFlight: result.inFlight ?? 0 })
-          dispatch({ type: 'RETURN_TO_READY', notice: null })
+        for (;;) {
+          const result = await postJson<DialResponse>('/api/session/next', { sessionId: id })
+          // The session can end between a quiet poll going out and its answer
+          // coming back; that answer describes a call nobody is waiting on.
+          // Only checked here: on the first dial of a session `stateRef` may
+          // not have caught up with SESSION_READY yet.
+          if (quiet && stateRef.current.sessionId !== id) return
+          if (result.capped && !result.lines?.length) {
+            // No free slot: every call the account may hold is in use, usually
+            // by another rep. Park in `ready` and let the wait effect retry
+            // quietly; a warning here would auto-dismiss and leave a screen
+            // that looks idle.
+            setLineWait({ cap: result.cap ?? 3, agents: result.agents ?? 0, inFlight: result.inFlight ?? 0 })
+            if (!quiet) dispatch({ type: 'RETURN_TO_READY', notice: null })
+            return
+          }
+          setLineWait(null)
+          if (result.exhausted) {
+            queueDryRef.current = true
+            dispatch({ type: 'QUEUE_EXHAUSTED' })
+            return
+          }
+          if (!result.lines?.length) {
+            // Reserved, then skipped for the prospect's local calling hours.
+            // Walk past it to the next lead rather than ending the session.
+            if (result.skipped && ++skipped < MAX_SKIPS_IN_A_ROW) continue
+            queueDryRef.current = true
+            dispatch({ type: 'QUEUE_EXHAUSTED' })
+            return
+          }
+          if (quiet) dispatch({ type: 'DIAL_REQUESTED', mode: 'queue' })
+          dispatch({
+            type: 'LINES_STARTED',
+            mode: 'queue',
+            lines: result.lines,
+            nowMs: Date.now(),
+            skippedForHours: skipped,
+          })
+          void refresh(id)
           return
         }
-        setLineWait(null)
-        if (result.exhausted || !result.lines?.length) {
-          queueDryRef.current = true
-          dispatch({ type: 'QUEUE_EXHAUSTED' })
-          return
-        }
-        dispatch({
-          type: 'LINES_STARTED',
-          mode: 'batch',
-          lines: result.lines,
-          nowMs: Date.now(),
-          skippedForHours: result.skippedForHours,
-        })
-        void refresh(id)
       } catch (e) {
-        dispatch({ type: 'DIAL_FAILED', message: e instanceof Error ? e.message : 'Could not start the batch.' })
+        // While waiting on a slot, a refused or dropped request is simply
+        // asked again on the next tick.
+        if (quiet) return
+        dispatch({ type: 'DIAL_FAILED', message: e instanceof Error ? e.message : 'Could not place the call.' })
       }
     },
     [refresh],
@@ -381,9 +393,9 @@ export function useDialer() {
     endingRef.current = false
     dispatch({ type: 'SESSION_CONNECTING' })
     setSync('connecting')
-    let session: { sessionId: string; linesPerBatch?: number }
+    let session: { sessionId: string }
     try {
-      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { lines: linesWantedRef.current, queue: queueRef.current })
+      session = await postJson<{ sessionId: string }>('/api/session/start', { queue: queueRef.current })
     } catch (e) {
       const conflict = e instanceof SessionConflict ? e : null
       if (!conflict) throw e
@@ -394,9 +406,8 @@ export function useDialer() {
           'Each rep should sign in with their own account.\n\nTake over anyway?',
       )
       if (!takeOver) throw new Error('Already dialing in another window. End that session first, or use your own login.')
-      session = await postJson<{ sessionId: string; linesPerBatch?: number }>('/api/session/start', { force: true, lines: linesWantedRef.current, queue: queueRef.current })
+      session = await postJson<{ sessionId: string }>('/api/session/start', { force: true, queue: queueRef.current })
     }
-    linesPerBatchRef.current = session.linesPerBatch ?? DEFAULT_LINES_PER_BATCH
     queueDryRef.current = false
     await connectSoftphone(session.sessionId)
     dispatch({ type: 'SESSION_READY', sessionId: session.sessionId })
@@ -407,12 +418,12 @@ export function useDialer() {
     primeAudio()
     try {
       const id = await openSession()
-      await startBatch(id)
+      await dialNext(id)
     } catch (e) {
       dispatch({ type: 'SESSION_ENDED', error: e instanceof Error ? e.message : 'Could not start the session.' })
       setSync('offline')
     }
-  }, [openSession, startBatch])
+  }, [openSession, dialNext])
 
   /**
    * Dial one hand-typed number. Opens a session first if none is running, so
@@ -439,51 +450,25 @@ export function useDialer() {
   )
 
   // Waiting for a free call slot: ask again until one opens, then start
-  // dialing on our own. Silent on purpose: no dispatch while still capped, so
-  // nothing flickers and no cue replays every few seconds.
+  // dialing on our own.
   const waitingForLine = lineWait !== null
   const waitingRequestRef = useRef(false)
   useEffect(() => {
     if (!waitingForLine || phase !== 'ready' || !sessionId) return
-    const timer = setInterval(async () => {
+    const timer = setInterval(() => {
       if (waitingRequestRef.current) return
       waitingRequestRef.current = true
-      try {
-        const result = await postJson<BatchResponse>('/api/session/batch', { sessionId })
-        const current = stateRef.current
-        if (current.sessionId !== sessionId || current.phase !== 'ready') return
-        if (result.capped && !result.lines?.length) {
-          setLineWait({ cap: result.cap ?? 3, agents: result.agents ?? 0, inFlight: result.inFlight ?? 0 })
-          return
-        }
-        setLineWait(null)
-        if (result.exhausted || !result.lines?.length) {
-          queueDryRef.current = true
-          dispatch({ type: 'QUEUE_EXHAUSTED' })
-          return
-        }
-        dispatch({ type: 'DIAL_REQUESTED', mode: 'batch' })
-        dispatch({
-          type: 'LINES_STARTED',
-          mode: 'batch',
-          lines: result.lines,
-          nowMs: Date.now(),
-          skippedForHours: result.skippedForHours,
-        })
-        void refresh(sessionId)
-      } catch {
-        // A refused or dropped request is simply asked again next tick.
-      } finally {
+      void dialNext(sessionId, { quiet: true }).finally(() => {
         waitingRequestRef.current = false
-      }
+      })
     }, WAIT_RETRY_MS)
     return () => clearInterval(timer)
-  }, [waitingForLine, phase, sessionId, refresh])
+  }, [waitingForLine, phase, sessionId, dialNext])
 
   const resumeQueue = useCallback(() => {
     const id = stateRef.current.sessionId
-    if (id) void startBatch(id)
-  }, [startBatch])
+    if (id) void dialNext(id)
+  }, [dialNext])
 
   const end = useCallback(async () => {
     setLineWait(null)
@@ -554,8 +539,8 @@ export function useDialer() {
   const finishWrapup = useCallback(() => {
     const current = stateRef.current
     dispatch({ type: 'WRAPUP_DONE' })
-    if (current.mode === 'batch' && current.sessionId) void startBatch(current.sessionId)
-  }, [startBatch])
+    if (current.mode === 'queue' && current.sessionId) void dialNext(current.sessionId)
+  }, [dialNext])
 
   /** "This was actually a technician" (or a company), after the call. */
   const setWrapKind = useCallback(async (kind: 'company' | 'tech') => {
@@ -573,52 +558,11 @@ export function useDialer() {
 
   // --- Transitions with side effects -----------------------------------------
 
-  // Every line finished: a manual call hands back the pad, a batch fans out
-  // Continuous dialing: as soon as a line finishes without a conversation,
-  // replace it, so the rep never waits for a whole batch to die. Stops once
-  // the queue is dry; the batch then settles the normal way.
-  useEffect(() => {
-    if (phase !== 'dialing' || mode !== 'batch' || !sessionId || state.liveCallId) return
-    if (queueDryRef.current || toppingUpRef.current) return
-    const lines = selectLines(state)
-    if (lines.length === 0) return
-    const inFlight = lines.filter((line) => !line.endedAt && (line.status === 'dialing' || line.status === 'ringing')).length
-    const needed = linesPerBatchRef.current - inFlight
-    if (needed <= 0) return
-
-    toppingUpRef.current = true
-    void (async () => {
-      try {
-        const result = await postJson<BatchResponse>('/api/session/batch', { sessionId, limit: needed })
-        const current = stateRef.current
-        if (current.sessionId !== sessionId || current.phase !== 'dialing') return
-        if (result.capped && !result.lines?.length) return // retried on the next change
-        if (result.exhausted || !result.lines?.length) {
-          queueDryRef.current = true
-          return
-        }
-        dispatch({
-          type: 'LINES_STARTED',
-          mode: 'batch',
-          append: true,
-          lines: result.lines,
-          skippedForHours: result.skippedForHours,
-          nowMs: Date.now(),
-        })
-        void refresh(sessionId)
-      } catch {
-        // A refused top-up (call in progress, network) is retried on the next change.
-      } finally {
-        toppingUpRef.current = false
-      }
-    })()
-  }, [state, phase, mode, sessionId, refresh])
-
-  // again. A beat first, so the final state of each line is readable.
+  // The call finished without a conversation: a manual call hands the pad back,
+  // a queue call moves straight on to the next lead. A beat first, so the last
+  // state of the line is readable.
   useEffect(() => {
     if (settledAt == null || !sessionId) return
-    // A top-up is already replacing the finished lines; let it land.
-    if (toppingUpRef.current) return
     const timer = setTimeout(() => {
       if (mode === 'manual') {
         const line = selectLines(stateRef.current)[0]
@@ -627,11 +571,11 @@ export function useDialer() {
           notice: line ? `${line.companyName}: ${describeLine(line, Date.now()).label}` : null,
         })
       } else {
-        void startBatch(sessionId)
+        void dialNext(sessionId)
       }
     }, 1500)
     return () => clearTimeout(timer)
-  }, [settledAt, mode, sessionId, startBatch])
+  }, [settledAt, mode, sessionId, dialNext])
 
   useEffect(() => {
     const previous = prevPhaseRef.current
@@ -717,7 +661,7 @@ export function useDialer() {
   return {
     phase,
     mode,
-    batchNumber: state.batchNumber,
+    callNumber: state.callNumber,
     lines,
     liveLine,
     wrap: state.wrap,
@@ -743,8 +687,6 @@ export function useDialer() {
     dismissNotice,
     callVolume,
     setCallVolume,
-    linesWanted,
-    setLinesWanted,
     setMicDevice,
     queue,
     setQueue,

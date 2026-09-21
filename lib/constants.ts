@@ -76,39 +76,33 @@ export const STATUS_LABELS: Record<CallStatus, string> = {
 }
 
 /**
- * What a losing leg hears when it answers a fraction of a second too late.
+ * Twilio's concurrent-call cap for the whole account (error 10004). It counts
+ * every live call, inbound and outbound, each rep's own softphone leg
+ * included.
  *
- * 'hangup'  — disconnect immediately (chosen default)
- * 'whisper' — brief apology, then disconnect
+ * Measured from the account's own history rather than guessed: over Sept
+ * 14-21 the account sustained 4 live calls 93 times and 5 only 10 times, while
+ * 188 of the 379 rejections came with 4 already live. So 4 holds and the 5th
+ * is refused.
  *
- * Flipping this is the only change required; the answer webhook branches on it.
- * Worth knowing: 'hangup' means the prospect hears dead air, which is what
- * gets numbers flagged as spam and is what abandoned-call rules are about.
- */
-export const LOSING_LEG_BEHAVIOR: 'hangup' | 'whisper' = 'hangup'
-
-export const LOSING_LEG_WHISPER =
-  "Sorry about that, we've got a bad connection. We'll try you back shortly."
-
-/**
- * How many lines the dialer keeps out at once. The batch route trims this to
- * what Twilio's concurrent-call cap allows (see TWILIO_CONCURRENT_CALLS), so
- * asking for 4 under a cap of 4 yields 3 lines plus the rep's own leg.
- */
-export const DEFAULT_LINES_PER_BATCH = Math.min(6, Math.max(1, Number(process.env.LINES_PER_BATCH) || 4))
-
-/**
- * Twilio's concurrent-call cap for the whole account, agents' softphone legs
- * included. Measured at 3 on this account (Twilio's limited concurrency for
- * accounts without an approved Trust Hub business profile): across Sept 14-18
- * the most calls ever live at once was 3, and every batch that tried a 4th leg
- * got error 10004. The dialer never dials more lines than fit under it.
+ * Four is exactly what two reps need: each rep on a call costs two slots, the
+ * prospect's leg and their own. `availableLines` reserves each rep their half
+ * so one cannot take the other's, which is what lets both dial at once.
  *
- * Each rep's own line holds one slot for the whole session, so at 3 two reps
- * leave room for one prospect leg between them: they take turns. Raise
- * TWILIO_CONCURRENT_CALLS once Twilio lifts the cap.
+ * This used to be 3, which was wrong -- it left one prospect leg between two
+ * reps and made them take turns.
+ *
+ * 4 is a floor, not just a default: a stale TWILIO_CONCURRENT_CALLS=3 left in
+ * a deployment's environment would silently bring the turn-taking back, and
+ * the symptom ("waiting for a free line") looks like a bug in the dialer
+ * rather than a config value nobody remembers setting. A larger value from the
+ * environment still wins -- raise it once a Trust Hub Primary Customer Profile
+ * is approved and Twilio lifts limited concurrency. If Twilio ever throttles
+ * this account below 4, lower the floor here rather than in the environment,
+ * because below 4 two reps cannot both hold a call and that is worth seeing in
+ * the diff.
  */
-export const TWILIO_CONCURRENT_CALLS = Math.max(2, Number(process.env.TWILIO_CONCURRENT_CALLS) || 3)
+export const TWILIO_CONCURRENT_CALLS = Math.max(4, Number(process.env.TWILIO_CONCURRENT_CALLS) || 4)
 
 /** Ring for this long before giving up on a leg. */
 export const DIAL_TIMEOUT_SECONDS = 25
