@@ -4,27 +4,29 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { accountForCall, accountForSession } from '@/lib/twilio/accounts'
 
 /**
- * Hang up every other ringing leg in the session the instant we have a winner.
+ * Hang up any other leg of this session that is still ringing.
  *
- * Session-wide, not batch-wide: with continuous top-ups, legs from several
- * batches ring at once and all of them must drop when one prospect answers.
+ * With one call out at a time there should never be another, so this is a
+ * safety net rather than part of the dial path: a leg that dialled late out of
+ * Twilio's queue, or one whose status webhook never arrived, would otherwise
+ * ring a prospect nobody is waiting to talk to.
  *
- * Runs after the TwiML response is flushed -- the winning prospect must not
- * wait on three REST round-trips before they hear the agent. Failures are
- * swallowed per leg: a leg that already ended returns a 20009 and that is a
- * normal outcome of the race, not an error worth failing the call over.
+ * Runs after the TwiML response is flushed -- the prospect who just picked up
+ * must not wait on a REST round-trip before they hear the rep. Failures are
+ * swallowed per leg: a leg that already ended returns a 20009, which is a
+ * normal outcome here and not worth failing the call over.
  */
-export async function hangUpOthers(sessionId: string, winnerCallId: string) {
+export async function hangUpStrays(sessionId: string, keepCallId: string) {
   const admin = createAdminClient()
 
-  const { data: losers } = await admin
+  const { data: strays } = await admin
     .from('calls')
     .select('id, call_sid')
     .eq('session_id', sessionId)
-    .neq('id', winnerCallId)
+    .neq('id', keepCallId)
     .in('status', ['dialing', 'ringing'])
 
-  if (!losers?.length) return
+  if (!strays?.length) return
 
   const account = await accountForSession(sessionId)
   const now = new Date().toISOString()
@@ -34,11 +36,11 @@ export async function hangUpOthers(sessionId: string, winnerCallId: string) {
     .update({ status: 'canceled', ended_at: now })
     .in(
       'id',
-      losers.map((l) => l.id),
+      strays.map((l) => l.id),
     )
 
   await Promise.allSettled(
-    losers
+    strays
       .filter((l) => l.call_sid)
       .map((l) =>
         twilioClient(account)
@@ -49,26 +51,16 @@ export async function hangUpOthers(sessionId: string, winnerCallId: string) {
   )
 }
 
-/** Batch-keyed wrapper for callers that only know the batch. */
-export async function hangUpLosers(batchId: string, winnerCallId: string) {
-  const { data: batch } = await createAdminClient()
-    .from('dial_batches')
-    .select('session_id')
-    .eq('id', batchId)
-    .maybeSingle()
-  if (batch?.session_id) await hangUpOthers(batch.session_id, winnerCallId)
-}
-
 /**
- * Start recording the winning leg, dual-channel.
+ * Start recording the connected leg, dual-channel.
  *
  * Dual channel puts the prospect on one track and the conference (the agent)
  * on the other, which is what makes the transcript attributable to a speaker.
  * A mixed conference recording would collapse both into one channel and the
  * summary quality drops with it.
  *
- * Recording starts here rather than at call creation so we never pay to store
- * three seconds of audio for each of the three legs we hang up on.
+ * Recording starts here rather than at call creation so an unanswered leg
+ * never leaves a few seconds of ringing in storage.
  */
 export async function startRecording(callSid: string, callId: string) {
   const recording = await twilioClient(await accountForCall(callId))

@@ -6,6 +6,9 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Tests run on node's own TypeScript stripping, which resolves the real
+    // file and so needs the extension written out.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

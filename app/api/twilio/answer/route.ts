@@ -2,23 +2,22 @@ import { after } from 'next/server'
 import twilio from 'twilio'
 import { verifyTwilioRequest, twiml } from '@/lib/twilio/verify'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { hangUpLosers, startRecording } from '@/lib/twilio/calls'
-import { LOSING_LEG_BEHAVIOR, LOSING_LEG_WHISPER } from '@/lib/constants'
+import { hangUpStrays, startRecording } from '@/lib/twilio/calls'
 
 /**
- * A prospect picked up. This is the race.
+ * A prospect picked up. Bridge them to the rep.
  *
- * Four legs are ringing; two can answer within the same tens of milliseconds.
- * `claim_batch_winner` is an atomic compare-and-set in Postgres -- exactly one
- * caller gets `true`, everyone else gets `false`, no matter how close the two
- * webhooks land. Nothing here decides the winner in application code, because
- * anything we wrote by hand would be a check-then-act race.
+ * The rep has exactly one line out at a time, so there is no longer a race
+ * between legs of the same batch -- but a session still has exactly one live
+ * slot, and a leg that dialled late out of Twilio's queue can arrive after the
+ * rep is already talking to someone else. `claim_batch_winner` is an atomic
+ * compare-and-set in Postgres that hands that slot to exactly one call; a leg
+ * that does not get it is hung up rather than bridged into an occupied room.
  *
- * The winner's TwiML goes back immediately; the recording starts and the other
- * legs are hung up after the response is flushed, so the person who just said
- * "hello" is not listening to silence. There is no answering-machine
- * detection: the first pickup wins, voicemail or not, and the rep hangs up on
- * a greeting and moves on.
+ * TwiML goes back immediately; the recording starts after the response is
+ * flushed, so the person who just said "hello" is not listening to silence.
+ * There is no answering-machine detection: the rep hangs up on a greeting and
+ * moves on.
  */
 export async function POST(request: Request) {
   const verified = await verifyTwilioRequest(request)
@@ -51,9 +50,9 @@ export async function POST(request: Request) {
     return twiml(response.toString())
   }
 
-  // A manual dial from the dial pad has no batch and therefore no race: it is
-  // one number the agent typed, so it wins by definition. Only a fanned-out
-  // batch needs the arbiter.
+  // A manual dial from the dial pad carries no batch id and skips the claim:
+  // the rep typed that number a moment ago, so it is the call they are waiting
+  // for by definition.
   let lost = false
   if (batchId) {
     const { data: won, error } = await admin.rpc('claim_batch_winner', {
@@ -65,7 +64,7 @@ export async function POST(request: Request) {
     lost = error != null || won !== true
 
     // A leg whose batch row is gone (a queue-function bug deleted it) still
-    // belongs to a session. Claim that session's live slot directly: the
+    // belongs to a session. Claim that session's line directly: the
     // UPDATE ... WHERE live_call_id IS NULL is atomic, same as the RPC.
     if (lost && !error) {
       const { data: batch } = await admin.from('dial_batches').select('id').eq('id', batchId).maybeSingle()
@@ -112,9 +111,6 @@ export async function POST(request: Request) {
         .eq('id', callId)
     })
 
-    if (LOSING_LEG_BEHAVIOR === 'whisper') {
-      response.say({ voice: 'Polly.Joanna' }, LOSING_LEG_WHISPER)
-    }
     response.hangup()
     return twiml(response.toString())
   }
@@ -131,7 +127,8 @@ export async function POST(request: Request) {
       })
       .eq('id', callId)
 
-    if (batchId) await hangUpLosers(batchId, callId)
+    const sessionId = (leg as { session_id?: string }).session_id
+    if (sessionId) await hangUpStrays(sessionId, callId)
 
     try {
       await startRecording(callSid, callId)
@@ -145,7 +142,7 @@ export async function POST(request: Request) {
   dial.conference(
     {
       beep: 'false',
-      // The agent is already parked in the room and owns its lifetime.
+      // The rep is already parked in the room and owns its lifetime.
       startConferenceOnEnter: true,
       endConferenceOnExit: false,
     },

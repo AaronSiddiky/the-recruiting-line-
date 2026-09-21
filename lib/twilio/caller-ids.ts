@@ -1,47 +1,61 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { accountForAgent, agentIdsOn } from '@/lib/twilio/accounts'
+import { accountForAgent } from '@/lib/twilio/accounts'
 
 /**
- * Which caller IDs each rep dials from, keyed by login email, when two reps
- * share one Twilio account. A rep alone on an account uses all of its numbers.
+ * The one number each rep dials from, keyed by login email.
  *
- * Override without a code change by setting TWILIO_CALLER_IDS_BY_REP, e.g.
- *   a@x.com=+15550000001|+15550000002;b@y.com=+15550000003
+ * One rep, one number -- not a rotating pool. Rotation existed to spread
+ * spam-flagging risk across a four-line batch; with one call at a time there
+ * is no batch to spread. What a fixed number buys instead: a prospect who has
+ * seen the number before is likelier to answer, a callback reaches the rep who
+ * actually dialled them, and each number's reputation belongs to one person
+ * rather than being smeared across the team.
+ *
+ * Override without a code change with TWILIO_NUMBER_BY_REP, e.g.
+ *   a@x.com=+15550000001;b@y.com=+15550000002
  */
-const DEFAULT_BY_REP: Record<string, string[]> = {
-  // Busiest number paired with the least used, so both pools age evenly.
-  'aaron.siddiky@columbia.edu': ['+12543646807', '+13252307022'],
-  'leonard@holterholdings.com': ['+15013006951', '+19403295810'],
+const DEFAULT_BY_REP: Record<string, string> = {
+  'aaron.siddiky@columbia.edu': '+12543646807',
+  'leonard@holterholdings.com': '+15013006951',
 }
 
-function mapping(): Record<string, string[]> {
-  const raw = process.env.TWILIO_CALLER_IDS_BY_REP
+function mapping(): Record<string, string> {
+  // TWILIO_CALLER_IDS_BY_REP is the old pooled variable, still read so a
+  // deployment that only sets that one keeps working: each rep's first number
+  // becomes their number and the rest are retired.
+  const raw = process.env.TWILIO_NUMBER_BY_REP ?? process.env.TWILIO_CALLER_IDS_BY_REP
   if (!raw) return DEFAULT_BY_REP
-  const out: Record<string, string[]> = {}
+  const out: Record<string, string> = {}
   for (const entry of raw.split(';')) {
     const [email, numbers] = entry.split('=')
-    if (email && numbers) out[email.trim().toLowerCase()] = numbers.split('|').map((n) => n.trim()).filter(Boolean)
+    const first = (numbers ?? '')
+      .split('|')
+      .map((n) => n.trim())
+      .filter(Boolean)[0]
+    if (email && first) out[email.trim().toLowerCase()] = first
   }
   return out
 }
 
 /**
- * The numbers this rep dials from on their Twilio account, rotated to a
- * random starting point so a one- or two-line batch doesn't always use the
- * same number. Only numbers owned by that account are ever returned.
+ * The number this rep dials from. Always one, and always the same one.
+ *
+ * A rep with no number assigned -- or one assigned a number their Twilio
+ * account does not own -- falls back to the first caller ID on that account.
+ * Twilio rejects a `from` the account cannot use, so falling back beats
+ * failing the dial outright.
  */
-export async function callerIdsFor(agentId: string): Promise<string[]> {
+export async function callerIdFor(agentId: string): Promise<string> {
   const account = await accountForAgent(agentId)
-  const pool = account.callerIds
-  const reps = await agentIdsOn(account)
-  let ids = pool
-  if (!reps || reps.length > 1) {
-    // Shared account: split its numbers between the reps on it.
-    const { data } = await createAdminClient().from('profiles').select('email').eq('id', agentId).maybeSingle()
-    const assigned = (mapping()[(data?.email ?? '').toLowerCase()] ?? []).filter((n) => pool.includes(n))
-    if (assigned.length > 0) ids = assigned
+  if (account.callerIds.length === 0) {
+    throw new Error(`No caller IDs are configured for the ${account.key} Twilio account.`)
   }
-  const start = Math.floor(Math.random() * ids.length)
-  return [...ids.slice(start), ...ids.slice(0, start)]
+  const { data } = await createAdminClient()
+    .from('profiles')
+    .select('email')
+    .eq('id', agentId)
+    .maybeSingle()
+  const assigned = mapping()[(data?.email ?? '').toLowerCase()]
+  return assigned && account.callerIds.includes(assigned) ? assigned : account.callerIds[0]
 }

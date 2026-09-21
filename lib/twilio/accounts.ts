@@ -8,9 +8,10 @@ import { TWILIO_CONCURRENT_CALLS } from '@/lib/constants'
  * which.
  *
  * Twilio's concurrent-call cap is per account, and each rep's own line holds
- * one of those slots all session. On a cap of 3, two reps on one account share
- * a single prospect leg and take turns. Putting each rep on their own account
- * gives each a full cap.
+ * one of those slots all session -- so a rep on a call costs two. The cap here
+ * is 4, which two reps fill exactly; `availableLines` reserves each of them
+ * half so both can be on the phone at once. A third rep does not fit, and
+ * putting reps on their own account gives each a full cap.
  *
  * The primary account comes from TWILIO_*. A second account is configured with
  * the same variables prefixed TWILIO2_ (all of ACCOUNT_SID, AUTH_TOKEN,
@@ -90,8 +91,11 @@ export function accountBySid(sid: string | null | undefined): TwilioAccount | nu
  * listed, or listed for an account that isn't configured, uses the primary.
  */
 const DEFAULT_ACCOUNT_BY_REP: Record<string, TwilioAccount['key']> = {
-  // Aaron moves to the new account; Leonard keeps the original and its numbers.
-  'aaron.siddiky@columbia.edu': 'second',
+  // Empty on purpose: both reps dial through the primary account, which has
+  // room for both of them. This used to move Aaron to the second account, and
+  // would have done so silently the moment TWILIO2_* was filled in. Splitting
+  // the team across accounts is now something you opt into with
+  // TWILIO_ACCOUNT_BY_REP, not something that happens on its own.
 }
 
 function accountKeyForEmail(email: string | null | undefined): TwilioAccount['key'] {

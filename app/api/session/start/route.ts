@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hangUpSession } from '@/lib/twilio/calls'
-import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
 /** A session polled more recently than this is someone actively dialing. */
 const ALIVE_WINDOW_MS = 45_000
@@ -25,11 +24,8 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
 
-  const { force, lines, queue } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean; lines?: number; queue?: string }
+  const { force, queue } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean; queue?: string }
   const queueName = queue === 'techs' ? 'techs' : 'companies'
-  // The rep's chosen line count; the batch route still trims it to what
-  // Twilio's concurrent-call cap allows at the moment of dialing.
-  const linesPerBatch = Math.min(6, Math.max(1, Math.round(Number(lines)) || DEFAULT_LINES_PER_BATCH))
   const admin = createAdminClient()
 
   const { data: stale } = await admin
@@ -66,10 +62,12 @@ export async function POST(request: Request) {
     .insert({
       agent_id: user.id,
       conference_name: `rl-${randomUUID()}`,
-      lines_per_batch: linesPerBatch,
+      // One line, always. The column is a leftover from the parallel dialer;
+      // the check constraint on it requires a value between 1 and 6.
+      lines_per_batch: 1,
       queue: queueName,
     })
-    .select('id, conference_name, lines_per_batch, queue')
+    .select('id, conference_name, queue')
     .single()
 
   if (error || !session) {
@@ -79,7 +77,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     sessionId: session.id,
     conferenceName: session.conference_name,
-    linesPerBatch: session.lines_per_batch,
     queue: session.queue,
   })
 }

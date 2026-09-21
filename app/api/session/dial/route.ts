@@ -5,7 +5,7 @@ import { twilioClient, webhookUrl } from '@/lib/twilio/client'
 import { toE164, formatPhone } from '@/lib/utils'
 import { DIAL_TIMEOUT_SECONDS } from '@/lib/constants'
 import { availableLines } from '@/lib/twilio/budget'
-import { callerIdsFor } from '@/lib/twilio/caller-ids'
+import { callerIdFor } from '@/lib/twilio/caller-ids'
 import { accountForAgent } from '@/lib/twilio/accounts'
 
 /**
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
   if (tech) {
     const t = tech as { id: string; name: string | null; title: string | null; city: string | null }
     const account = await accountForAgent(user.id)
-    const budget = await availableLines(account)
+    const budget = await availableLines(account, user.id)
     if (budget.available < 1) {
       return NextResponse.json(
         { error: `Twilio's call limit (${budget.cap} at once, softphones included) is full right now. Try again in a moment.` },
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     try {
       const call = await twilioClient(account).calls.create({
         to: e164,
-        from: (await callerIdsFor(user.id))[0],
+        from: await callerIdFor(user.id),
         timeout: DIAL_TIMEOUT_SECONDS,
         url: webhookUrl('/api/twilio/answer', { callId: callRow.id, conference: session.conference_name }),
         statusCallback: webhookUrl('/api/twilio/status', { callId: callRow.id }),
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
 
   // Each rep dials through their own Twilio account, against its own cap.
   const account = await accountForAgent(user.id)
-  const budget = await availableLines(account)
+  const budget = await availableLines(account, user.id)
   if (budget.available < 1) {
     return NextResponse.json(
       { error: `Twilio's call limit (${budget.cap} at once, softphones included) is full right now. Try again in a moment.` },
@@ -190,11 +190,11 @@ export async function POST(request: Request) {
   try {
     const call = await twilioClient(account).calls.create({
       to: e164,
-      // One of this rep's own numbers, rotated like batch lines.
-      from: (await callerIdsFor(user.id))[0],
+      // This rep's own number, the same one the queue dials from.
+      from: await callerIdFor(user.id),
       timeout: DIAL_TIMEOUT_SECONDS,
-      // No batchId: nothing to race against, so the answer webhook bridges
-      // this leg straight through.
+      // No batchId: a hand-typed number is the call the rep is waiting for,
+      // so the answer webhook bridges this leg straight through.
       url: webhookUrl('/api/twilio/answer', {
         callId: callRow.id,
         conference: session.conference_name,

@@ -41,7 +41,6 @@ import {
   type WrapCall,
 } from './dialer-machine'
 import { cn, formatPhone } from '@/lib/utils'
-import { DEFAULT_LINES_PER_BATCH } from '@/lib/constants'
 
 export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSize: number; techQueueSize?: number; hasVoicemail: boolean }) {
   const d = useDialer()
@@ -62,7 +61,6 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
       <header className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border-subtle px-4 py-2.5">
         <PhaseLabel
           phase={d.phase}
-          mode={d.mode}
           lines={d.lines}
           liveLine={d.liveLine}
           wrap={d.wrap}
@@ -128,19 +126,6 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
             </Button>
           ) : (
             <>
-              <label className="flex items-center gap-1.5 text-xs text-muted" title="How many companies to ring at once. Trimmed to what Twilio allows.">
-                Lines
-                <select
-                  value={d.linesWanted}
-                  onChange={(e) => d.setLinesWanted(Number(e.target.value))}
-                  aria-label="Lines at once"
-                  className="h-8 rounded-md border border-border-strong bg-background px-1.5 text-sm"
-                >
-                  {[1, 2, 3, 4].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </label>
               <Button
                 variant="primary"
                 onClick={() => void d.start()}
@@ -198,10 +183,10 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
         )}
 
         {d.phase === 'dialing' && (
-          <BatchBoard
+          <CallBoard
             lines={d.lines}
             mode={d.mode}
-            batchNumber={d.batchNumber}
+            callNumber={d.callNumber}
             now={now}
             onSkip={() => void d.skipBatch()}
           />
@@ -210,7 +195,6 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
         {d.phase === 'live' && d.liveLine && (
           <LiveCallPanel
             line={d.liveLine}
-            lines={d.lines}
             agent={d.agent}
             levelsRef={d.levelsRef}
             now={now}
@@ -223,10 +207,10 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
         )}
 
         {d.phase === 'wrapup' && (
-          <BatchBoard
+          <CallBoard
             lines={d.lines}
             mode={d.mode}
-            batchNumber={d.batchNumber}
+            callNumber={d.callNumber}
             now={now}
             onSkip={() => undefined}
             dimmed
@@ -266,14 +250,12 @@ export function Dialer({ queueSize, techQueueSize = 0, hasVoicemail }: { queueSi
 
 function PhaseLabel({
   phase,
-  mode,
   lines,
   liveLine,
   wrap,
   waitingForLine = false,
 }: {
   phase: DialerPhase
-  mode: DialMode
   lines: Line[]
   liveLine: Line | null
   wrap: WrapCall | null
@@ -305,12 +287,7 @@ function PhaseLabel({
     case 'dialing':
       dot = 'bg-warn'
       pulse = true
-      if (mode === 'manual') label = lines[0] ? `Calling ${lines[0].companyName}` : 'Placing call…'
-      else
-        label =
-          lines.length > 0
-            ? `Dialing ${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`
-            : 'Starting next batch…'
+      label = lines[0] ? `Calling ${lines[0].companyName}` : 'Placing call…'
       break
     case 'live':
       label = `Live · ${liveLine?.companyName ?? 'prospect'}`
@@ -473,7 +450,7 @@ function NoticeBar({ notice, onDismiss }: { notice: Notice; onDismiss: () => voi
 function IdleState({ queueSize }: { queueSize: number }) {
   return (
     <div className="mx-auto max-w-md text-center">
-      <h1 className="text-lg font-semibold tracking-tight">Parallel dialer</h1>
+      <h1 className="text-lg font-semibold tracking-tight">Dialer</h1>
       <p className="mt-2 text-sm text-muted">
         {queueSize === 0 ? (
           <>
@@ -486,10 +463,9 @@ function IdleState({ queueSize }: { queueSize: number }) {
           </>
         ) : (
           <>
-            {queueSize.toLocaleString()} {queueSize === 1 ? 'lead is' : 'leads are'} ready.
-            {DEFAULT_LINES_PER_BATCH === 1
-              ? 'Starting dials one company at a time and moves to the next the moment a call ends. A pickup connects to you with a tone.'
-              : `Starting opens ${DEFAULT_LINES_PER_BATCH} lines at once, and the first person to pick up is connected to you with a tone.`}
+            {queueSize.toLocaleString()} {queueSize === 1 ? 'lead is' : 'leads are'} ready. Starting
+            calls one company at a time from your own number, and moves to the next the moment a
+            call ends. A pickup connects to you with a tone.
           </>
         )}
       </p>
@@ -520,7 +496,10 @@ function ReadyState({
   lineWait: LineWait | null
 }) {
   if (lineWait) {
-    const others = Math.max(0, lineWait.agents - 1)
+    // Each rep has a reserved share of the account's calls, so this is no
+    // longer the other rep holding the only line. It means the account itself
+    // is full -- usually a leg from an earlier call that has not closed yet.
+    const needed = lineWait.agents * 2
     return (
       <div className="mx-auto max-w-md text-center">
         <h1 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
@@ -528,12 +507,19 @@ function ReadyState({
           Waiting for a free line
         </h1>
         <p className="mt-2 text-sm text-muted">
-          Twilio lets this account run {lineWait.cap} calls at once, and every rep&apos;s own line
-          counts as one. Right now {lineWait.agents} rep {lineWait.agents === 1 ? 'line' : 'lines'}
-          {lineWait.inFlight > 0 && ` and ${lineWait.inFlight} ${lineWait.inFlight === 1 ? 'call' : 'calls'}`} are using
-          them{others > 0 ? `, so you and ${others === 1 ? 'the other rep' : 'the other reps'} take turns` : ''}.
+          Twilio lets this account run {lineWait.cap} calls at once, and{' '}
+          {lineWait.agents} rep {lineWait.agents === 1 ? 'line' : 'lines'}
+          {lineWait.inFlight > 0 &&
+            ` and ${lineWait.inFlight} ${lineWait.inFlight === 1 ? 'call' : 'calls'}`}{' '}
+          {lineWait.inFlight > 0 || lineWait.agents !== 1 ? 'are' : 'is'} using them.
         </p>
         <p className="mt-2 text-sm font-medium">Dialing starts on its own as soon as one frees up.</p>
+        {needed > lineWait.cap && (
+          <p className="mt-3 text-xs text-muted-2">
+            {lineWait.agents} reps dialing at once needs {needed} calls: one line and one prospect
+            each. Raise the cap in the Twilio Console, or dial with fewer people at a time.
+          </p>
+        )}
       </div>
     )
   }
@@ -564,50 +550,37 @@ function Empty({ title, body }: { title: string; body: string }) {
 
 // --- lines -------------------------------------------------------------------
 
-function BatchBoard({
+function CallBoard({
   lines,
   mode,
-  batchNumber,
+  callNumber,
   now,
   onSkip,
   dimmed = false,
 }: {
   lines: Line[]
   mode: DialMode
-  batchNumber: number
+  callNumber: number
   now: number
   onSkip: () => void
   dimmed?: boolean
 }) {
   const summary = summarizeLines(lines)
   const canStop = !dimmed && summary.ringing > 0
-  const placeholders = mode === 'manual' ? 1 : DEFAULT_LINES_PER_BATCH
 
   return (
-    <section className={cn('mx-auto w-full max-w-3xl', dimmed && 'opacity-50')}>
+    <section className={cn('mx-auto w-full max-w-xl', dimmed && 'opacity-50')}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">
-          {mode === 'manual' ? 'Manual call' : `Batch ${batchNumber}`}
-          {lines.length > 0 && mode === 'batch' && (
-            <span className="ml-2 font-normal text-muted">
-              {lines.length} {lines.length === 1 ? 'line' : 'lines'}
-            </span>
-          )}
+          {mode === 'manual' ? 'Manual call' : `Call ${callNumber}`}
         </h2>
         {lines.length > 0 && <SummaryChips summary={summary} />}
       </div>
 
       {lines.length === 0 ? (
-        <div className={cn('grid gap-3', placeholders > 1 && 'sm:grid-cols-2')}>
-          {Array.from({ length: placeholders }, (_, i) => (
-            <div
-              key={i}
-              className="h-[74px] animate-pulse rounded-lg border border-dashed border-border-subtle bg-surface"
-            />
-          ))}
-        </div>
+        <div className="h-[74px] animate-pulse rounded-lg border border-dashed border-border-subtle bg-surface" />
       ) : (
-        <div className={cn('grid gap-3', lines.length > 1 && 'sm:grid-cols-2')}>
+        <div className="grid gap-3">
           {lines.map((line) => (
             <LineCard key={line.callId} line={line} now={now} />
           ))}
@@ -618,7 +591,7 @@ function BatchBoard({
         <div className="mt-4 flex justify-center">
           <Button onClick={onSkip}>
             <SkipForward className="size-3.5" aria-hidden />
-            {mode === 'manual' ? 'Cancel call' : 'Skip this batch'}
+            {mode === 'manual' ? 'Cancel call' : 'Skip this one'}
             <Kbd>S</Kbd>
           </Button>
         </div>
@@ -694,21 +667,8 @@ function LineCard({ line, now }: { line: Line; now: number }) {
 
 // --- live call ---------------------------------------------------------------
 
-function otherLinesText(summary: LineSummary): string {
-  if (summary.ringing > 0) {
-    return `${summary.ringing} other ${summary.ringing === 1 ? 'line is' : 'lines are'} still ringing until this pickup is confirmed as a person.`
-  }
-  const parts: string[] = []
-  if (summary.noAnswer) parts.push(`${summary.noAnswer} stopped ringing`)
-  if (summary.voicemail) parts.push(`${summary.voicemail} voicemail`)
-  if (summary.dropped) parts.push(`${summary.dropped} picked up and dropped`)
-  if (summary.failed) parts.push(`${summary.failed} failed`)
-  return parts.length > 0 ? `Other lines: ${parts.join(', ')}.` : 'Hanging up opens the exit interview.'
-}
-
 function LiveCallPanel({
   line,
-  lines,
   agent,
   levelsRef,
   now,
@@ -719,7 +679,6 @@ function LiveCallPanel({
   onDigit,
 }: {
   line: Line
-  lines: Line[]
   agent: AgentAudio
   levelsRef: RefObject<AudioLevels>
   now: number
@@ -729,7 +688,6 @@ function LiveCallPanel({
   hasVoicemail: boolean
   onDigit: (digit: string) => void
 }) {
-  const others = summarizeLines(lines.filter((l) => l.callId !== line.callId))
   const showPhone = formatPhone(line.phone) !== line.companyName
 
   return (
@@ -829,7 +787,7 @@ function LiveCallPanel({
             {line.kind === 'tech' && <LiveScreenLink callId={line.callId} name={line.companyName} />}
 
             <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-2">
-              <span>{lines.length > 1 ? otherLinesText(others) : 'Hanging up opens the exit interview.'}</span>
+              <span>Hanging up opens the exit interview.</span>
               <Link
                 href={line.kind === 'tech' ? `/techs?q=${encodeURIComponent(line.phone)}` : `/companies/${line.companyId}`}
                 target="_blank"

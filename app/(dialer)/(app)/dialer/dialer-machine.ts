@@ -49,14 +49,14 @@ export type Line = LineMeta & {
 
 export type DialerPhase =
   | 'idle' // no session
-  | 'connecting' // opening the agent's softphone line
+  | 'connecting' // opening the rep's softphone line
   | 'ready' // line open, nothing dialing
-  | 'dialing' // lines are out
+  | 'dialing' // a call is out
   | 'live' // bridged to a prospect
   | 'wrapup' // call over, exit interview open
   | 'exhausted' // queue is dry
 
-export type DialMode = 'batch' | 'manual'
+export type DialMode = 'queue' | 'manual'
 export type EndedBy = 'you' | 'prospect'
 export type SyncState = 'connecting' | 'live' | 'polling' | 'offline'
 
@@ -67,7 +67,7 @@ export type DialerState = {
   phase: DialerPhase
   mode: DialMode
   sessionId: string | null
-  batchNumber: number
+  callNumber: number
   activeIds: string[]
   meta: Record<string, LineMeta>
   rows: Record<string, CallRow>
@@ -88,8 +88,6 @@ export type DialerAction =
   | { type: 'DIAL_REQUESTED'; mode: DialMode }
   | {
       type: 'LINES_STARTED'
-      /** Top-up: keep the lines still ringing and add these beside them. */
-      append?: boolean
       mode: DialMode
       lines: LineMeta[]
       nowMs: number
@@ -108,9 +106,9 @@ export type DialerAction =
 
 export const initialDialerState: DialerState = {
   phase: 'idle',
-  mode: 'batch',
+  mode: 'queue',
   sessionId: null,
-  batchNumber: 0,
+  callNumber: 0,
   activeIds: [],
   meta: {},
   rows: {},
@@ -258,10 +256,11 @@ function shortReason(notes: string | null): string | null {
 }
 
 /**
- * What a line card says. The distinction that matters most on a parallel
- * dialer is a line that stopped ringing (the prospect never heard a thing)
- * versus one that picked up and was dropped (they heard a hang-up). The second
- * is a real person who may remember the number.
+ * What the call card says. The distinction still worth drawing is a call that
+ * stopped ringing (the prospect never heard a thing) versus one that picked up
+ * and was dropped (they heard a hang-up) -- the second is a real person who
+ * may remember the number. Dropped calls should be rare now that only one line
+ * is ever out; a run of them means legs are outliving their session.
  */
 export function describeLine(line: Line, nowMs: number): LineDescription {
   const out = !line.endedAt
@@ -338,18 +337,11 @@ function derive(state: DialerState, now: number): DialerState {
         return { ...next, liveCallId: null, phase: 'wrapup', wrap: wrapFor(next, liveId, row) }
       }
       const name = lineFor(next, liveId).companyName
-      const othersRinging = next.activeIds.some((id) => id !== liveId && !isDone(next.rows[id]))
       next = {
         ...next,
         liveCallId: null,
         phase: 'dialing',
-        notice: makeNotice(
-          next,
-          'warn',
-          othersRinging
-            ? `${name} was a voicemail, so it was dropped. The other lines are still ringing.`
-            : `${name} was a voicemail, so it was dropped.`,
-        ),
+        notice: makeNotice(next, 'warn', `${name} was a voicemail, so it was dropped.`),
       }
     }
   }
@@ -370,7 +362,7 @@ function derive(state: DialerState, now: number): DialerState {
     }
   }
 
-  // 3. Every line finished and nobody is on the phone.
+  // 3. The call finished without a conversation.
   if (
     next.phase === 'dialing' &&
     !next.liveCallId &&
@@ -396,8 +388,8 @@ export function dialerReducer(state: DialerState, action: DialerAction): DialerS
       return { ...initialDialerState, error: action.error ?? null }
 
     case 'DIAL_REQUESTED':
-      // Clear the previous lines. Left in place, their finished rows would
-      // immediately "settle" the batch that is about to start.
+      // Clear the previous call. Left in place, its finished row would
+      // immediately "settle" the call that is about to start.
       return {
         ...state,
         phase: 'dialing',
@@ -410,7 +402,7 @@ export function dialerReducer(state: DialerState, action: DialerAction): DialerS
 
     case 'LINES_STARTED': {
       // A response that lands after the session ended, or after a newer
-      // request, describes lines nobody is waiting on.
+      // request, describes a call nobody is waiting on.
       if (!state.sessionId || state.phase !== 'dialing') return state
       const meta = { ...state.meta }
       const rows = { ...state.rows }
@@ -439,12 +431,9 @@ export function dialerReducer(state: DialerState, action: DialerAction): DialerS
           mode: action.mode,
           meta,
           rows,
-          activeIds: action.append
-            ? [...state.activeIds.filter((id) => !isDone(rows[id])), ...action.lines.map((line) => line.callId)]
-            : action.lines.map((line) => line.callId),
-          batchNumber: action.mode === 'batch' && !action.append ? state.batchNumber + 1 : state.batchNumber,
-          // New lines are out again, so the batch is no longer settled.
-          settledAt: action.append ? null : state.settledAt,
+          activeIds: action.lines.map((line) => line.callId),
+          callNumber: action.mode === 'queue' ? state.callNumber + 1 : state.callNumber,
+          settledAt: state.settledAt,
           notice:
             skipped > 0
               ? makeNotice(
